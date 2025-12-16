@@ -1,8 +1,5 @@
-#st.metric(label="scoring_op",value="2⁻¹m", delta="10⁻²m")
-
 # initialize an app just by running the python file with streamlit
 from main_app_requirement import *
-from functions import *
 from utils.preset import preset_app,render_team_logo,get_stats,TAB_NAMES,STATS_LABELS
 
 # define decorative elements
@@ -73,4 +70,3 @@ with tabs[0]:
                     f"<p style='text-align:left; font-weight:800; margin:8px 0;'>{val}</p>",
                     unsafe_allow_html=True,
                 )
-
