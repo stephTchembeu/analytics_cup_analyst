@@ -2,6 +2,7 @@ import os
 import base64
 import pandas as pd
 import streamlit as st
+from mplsoccer import Pitch
 from kloppy import skillcorner
 
 from .logo_loader import get_team_logo_url ,FALLBACK_LOGO
@@ -205,6 +206,20 @@ def get_players_name(team_name,match_data)->list:
             players_name = [player.full_name for player in team.players]
     return players_name
 
+def heatmap(xs, ys,xs_shot,ys_shot,match_data):
+    pitch = Pitch(
+        pitch_type="skillcorner",
+        pitch_length= match_data.metadata.coordinate_system.pitch_length,
+        pitch_width= match_data.metadata.coordinate_system.pitch_width,
+        line_zorder=2,
+    )
+    fig, ax = pitch.draw()
+    # ax.set_title(f"#{player.jersey_no} - {player.last_name} - {player.team.name}")
+    pitch.kdeplot(xs, ys, ax=ax, cmap="YlOrRd", fill=True, levels=100)
+    pitch.scatter(xs_shot, ys_shot, ax=ax, c='green', s=50, edgecolors='black', label='Shots')
+    ax.legend()
+
+    st.pyplot(fig)
 
 # variables
 SIMPLE_LOGO = "./src/images/logo.png"  # logo when no side =bar
