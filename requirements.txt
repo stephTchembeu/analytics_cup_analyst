@@ -1,0 +1,6 @@
+streamlit
+rapidfuzz
+requests
+numpy
+pandas
+kloppy

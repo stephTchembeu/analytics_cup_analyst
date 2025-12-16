@@ -1,6 +1,10 @@
 # initialize an app just by running the python file with streamlit
-from main_app_requirement import *
-from utils.preset import preset_app,render_team_logo,get_stats,TAB_NAMES,STATS_LABELS
+import streamlit as st
+import pandas as pd
+from kloppy import skillcorner
+
+from utils.preset import preset_app,render_team_logo,get_stats,get_players_name,TAB_NAMES,STATS_LABELS
+
 
 # define decorative elements
 preset_app()
@@ -82,7 +86,11 @@ with tabs[0]:
     
 
     # player profiling
-    with tabs[4]:
+    with tabs[3]:
         if st.session_state.selected_match:
-            st.write("data accessible")
+            selected_team_name = st.selectbox("Choose a team.", options=[home.name,away.name])
+            if selected_team_name:
+                selected_players = get_players_name(selected_team_name,match_data)
+                selected_player_name = st.selectbox("Choose a team.", options=selected_players)
+                st.write(selected_player_name)
         

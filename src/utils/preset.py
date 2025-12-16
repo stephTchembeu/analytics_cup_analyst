@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from kloppy import skillcorner
 
-from utils.logo_loader import get_team_logo_url ,FALLBACK_LOGO
+from .logo_loader import get_team_logo_url ,FALLBACK_LOGO
 
 
 # Function
@@ -160,19 +160,55 @@ def possession(team):
     posses = 50
     return posses
 
+def clearances(team):
+    clearances = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "clearance"]
+    team_clearances = clearances[clearances["team_id"] == team.team_id]
+    return len(team_clearances)
+
+def fouls_committed(team):
+    fouls = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "foul_committed"]
+    team_fouls = fouls[fouls["team_id"] == team.team_id]
+    return len(team_fouls)
+
+def direct_disruptions(team):
+    disruptions = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_disruption"]
+    team_disruptions = disruptions[disruptions["team_id"] == team.team_id]
+    return len(team_disruptions)
+
+def direct_regains(team):
+    regains = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_regain"]
+    team_regains = regains[regains["team_id"] == team.team_id]
+    return len(team_regains)
+
+def possession_losses(team):
+    losses = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "possession_loss"]
+    team_losses = losses[losses["team_id"] == team.team_id]
+    return len(team_losses)
+
 def get_stats(team):
     stats = {
             "shots":f"{shots(team)[0]}[{shots(team)[1]}]",
             "possession":f"{possession(team)}%",
             "passes":f"{passess(team)[0]}[{passess(team)[1]}]",
             "passes_accuracy":f"{pass_accuracy(team)}%",
+            "clearances":f"{clearances(team)}",
+            "fouls_committed":f"{fouls_committed(team)}",
+            "direct_disruptions":f"{direct_disruptions(team)}",
+            "direct_regains":f"{direct_regains(team)}",
+            "possession_losses":f"{possession_losses(team)}",
             }
     return stats
 
+def get_players_name(team_name,match_data)->list:
+    for team in match_data.metadata.teams:
+        if team.name == team_name:
+            players_name = [player.full_name for player in team.players]
+    return players_name
+
 
 # variables
-SIMPLE_LOGO = "./images/logo.png"  # logo when no side =bar
-LOGO_WITH_TEXT = "./images/logo_with_text.png"  # central logo and siderbar logo
+SIMPLE_LOGO = "./src/images/logo.png"  # logo when no side =bar
+LOGO_WITH_TEXT = "./src/images/logo_with_text.png"  # central logo and siderbar logo
 AVAILABLE_MATCHES_IDS = [
     1886347,
 ]
@@ -193,4 +229,9 @@ STATS_LABELS = [
             "Possession",
             "Total passes[succeed pass]",
             "Pass accuracy percentage",
+            "Clearances",
+            "Fouls committed",
+            "Direct disruptions",
+            "Direct regains",
+            "Possession losses",
         ]

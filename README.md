@@ -2,10 +2,23 @@
 
 ---
 
+## Installation
+
+1. Clone the repository.
+2. (Optional) Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
 ## Run Instructions
 
-Clone the repository, then run the following command:
+Run the following command:
 
 ```bash
-streamlit run main.py
+streamlit run src/main.py
 ```
