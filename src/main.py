@@ -13,10 +13,19 @@ match_data = skillcorner.load_open_data(
     match_id= st.session_state.selected_match_id,
     coordinates="skillcorner",
     )
-st.session_state.event_data = pd.read_csv("/home/student/Documents/AIMS/Intership/analytics_cup_analyst/src/data/1886347_dynamic_events.csv") # see how to dowload this directly from git at the deploiement
+
+@st.cache_data
+def load_event_data(game_id):
+    url = (
+        f"https://raw.githubusercontent.com/SkillCorner/opendata/master/data/matches/{game_id}/{game_id}_dynamic_events.csv"
+    )
+    return pd.read_csv(url)
+
+st.session_state.event_data = load_event_data(match_data.metadata.game_id)
 
 home,away = match_data.metadata.teams
 
+# team stats
 with tabs[0]:
     if st.session_state.selected_match:
         logo_home, score_col, logo_away = st.columns([0.25, 0.5, 0.25])
@@ -70,3 +79,10 @@ with tabs[0]:
                     f"<p style='text-align:left; font-weight:800; margin:8px 0;'>{val}</p>",
                     unsafe_allow_html=True,
                 )
+    
+
+    # player profiling
+    with tabs[4]:
+        if st.session_state.selected_match:
+            st.write("data accessible")
+        
