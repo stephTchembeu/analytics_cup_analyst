@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from kloppy import skillcorner
 
-from utils.preset import preset_app,render_team_logo,get_stats,get_players_name,TAB_NAMES,STATS_LABELS
+from utils.preset import preset_app,render_team_logo,get_stats,get_players_name,heatmap,TAB_NAMES,STATS_LABELS
 
 
 # define decorative elements
@@ -85,12 +85,35 @@ with tabs[0]:
                 )
     
 
-    # player profiling
-    with tabs[3]:
-        if st.session_state.selected_match:
-            selected_team_name = st.selectbox("Choose a team.", options=[home.name,away.name])
-            if selected_team_name:
-                selected_players = get_players_name(selected_team_name,match_data)
-                selected_player_name = st.selectbox("Choose a team.", options=selected_players)
-                st.write(selected_player_name)
-        
+# player profiling
+with tabs[3]:
+    if st.session_state.selected_match:
+        selected_team_name = st.selectbox("Choose a team.", options=[home.name,away.name])
+        team = home if selected_team_name == home.name else away
+        if selected_team_name:
+            selected_players = get_players_name(selected_team_name,match_data)
+            selected_player_name = st.selectbox("Choose a team.", options=selected_players)
+            selected_player = [player for player in team.players if player.full_name == str(selected_player_name)][0]
+            
+            # Filter shot events
+            shot_events = st.session_state.event_data[
+                (st.session_state.event_data["end_type"] == "shot") &
+                (st.session_state.event_data["player_id"] == int(selected_player.player_id))
+            ]
+
+            # Filter pass events
+            pass_events = st.session_state.event_data[
+                (st.session_state.event_data["end_type"] == "pass") &
+                (st.session_state.event_data["player_id"] == int(selected_player.player_id))
+            ]
+            
+            xs_pass = pass_events["x_start"]
+            ys_pass = pass_events["y_start"]
+            xs_shot = shot_events["x_start"]
+            ys_shot = shot_events["y_start"]
+            
+            radar_, heatmap_, stats_ = st.columns([0.30, 0.45, 0.25])
+            with heatmap_:
+                heatmap(xs_pass, ys_pass,xs_shot,ys_shot,match_data)
+                loop_into = st.selectbox("filter pass",options=["forward pass","backward pass","defensiveline-breaken","lead to goal"])
+            
