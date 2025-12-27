@@ -1,15 +1,31 @@
 import os
 import base64
+import numpy as np
 import pandas as pd
 import streamlit as st
 from mplsoccer import Pitch
 from kloppy import skillcorner
+from typing import List, Tuple
+import matplotlib.pyplot as plt
+from mplsoccer import Radar, FontManager, grid
+
+from kloppy.domain.models.common import Team
+from kloppy.domain.models.tracking import TrackingDataset
 
 from .logo_loader import get_team_logo_url ,FALLBACK_LOGO
 
 
 # Function
-def render_team_logo(team_name, align="left", width=100):
+def render_team_logo(team_name: str, align: str = "left", width: int = 100) -> None:
+    """Renders the team logo with the team name below it using HTML.
+
+    Fetches the logo from Wikipedia API or uses a fallback image if not found.
+
+    Args:
+        team_name (str): The name of the team to display.
+        align (str): Text alignment for the logo and name ('left' or 'right').
+        width (int): The width of the logo image in pixels.
+    """
     logo_url = get_team_logo_url(team_name)
 
     if logo_url:
@@ -34,13 +50,50 @@ def render_team_logo(team_name, align="left", width=100):
     )
 
 
-def get_teams_in_matches(available_matches_ids: list) -> list:
+def covered_distance(player, tracking_df: TrackingDataset) -> float:
+    """Calculates the total distance covered by a player during the match in kilometers.
+
+    Computes the Euclidean distance traveled by the player from tracking data by calculating
+    frame-by-frame movements using X and Y coordinates and summing them up.
+
+    Args:
+        player: Player object with player_id attribute from kloppy Team.
+        tracking_df (TrackingDataset): SkillCorner TrackingDataset containing tracking positions
+                                       with columns formatted as '{player_id}_x' and '{player_id}_y'.
+
+    Returns:
+        float: Total distance covered in kilometers, rounded to 2 decimal places.
     """
-    function to import assets of the name of home and away team from the list of available id
-    input:
-        available_matches_id: the list of available matches id's.
-    output:
-        the list of (home_name,away_name).
+    player_id = player.player_id
+    x_col = f"{player_id}_x"
+    y_col = f"{player_id}_y"
+
+    df = tracking_df.to_df(engine="pandas")[[x_col, y_col]].dropna(subset=[x_col])
+    
+    # Calculate frame-to-frame distance differences
+    dx = df[x_col].diff()
+    dy = df[y_col].diff()
+
+    # Compute Euclidean distance per frame
+    df["step_distance"] = np.sqrt(dx**2 + dy**2)
+
+    # Sum total distance and convert from meters to kilometers
+    distance_totale = df["step_distance"].sum()
+
+    return round(distance_totale / 1000, 2)
+
+
+def get_teams_in_matches(available_matches_ids: List[int]) -> List[Tuple[str, str, int]]:
+    """Retrieves team names and match IDs for a list of available matches.
+
+    Loads match metadata from SkillCorner API for each match ID and extracts
+    home and away team names.
+
+    Args:
+        available_matches_ids (List[int]): List of match IDs from SkillCorner.
+
+    Returns:
+        List[Tuple[str, str, int]]: List of tuples (home_team_name, away_team_name, match_id).
     """
     output = []
     for match_id in available_matches_ids:
@@ -49,15 +102,61 @@ def get_teams_in_matches(available_matches_ids: list) -> list:
         )
         home, away = dataset.metadata.teams
         output.append(
-            (home.name, away.name,match_id)
+            (home.name, away.name, match_id)
         )
     return output
 
 
-def preset_app():
+def preset_app() -> None:
+    """Sets up the Streamlit app configuration and UI elements.
+
+    Configures page layout, logos, sidebar match selector, and tab styling.
+    This function should be called once at the start of the app to initialize
+    unchangeable UI elements and set global app state.
     """
-    A function to preset unchangeable elemet of the dashboard the logo the elements within the tab.
+    st.markdown(
     """
+        <style>
+        .player {
+            margin-top: 5px;
+        }
+
+        .player .name {
+            font-size: 50px;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .player .position {
+            font-size: 35px;
+            color: darkgreen;
+            margin: 0;
+        }
+
+        .player-stats {
+        background-color: #f8f9fa;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+
+        .player-stats .label {
+            font-size: 20px;
+            color: #6c757d;
+            margin: 6px 0 0 0;
+        }
+
+        .player-stats .value {
+            font-size: 25px;
+            font-weight: 800;
+            color: #006400;
+            margin: 0 0 10px 0;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     # set title and icon
     st.set_page_config(
         page_title="FootMetricX",
@@ -124,103 +223,591 @@ def preset_app():
     )
     return
 
-def first_word(string):
-    """
-    Splits the string into words using a space as the separator
-    and returns the first word.
+def first_word(string: str) -> str:
+    """Extracts the first word from a space-separated string.
+
+    Args:
+        string (str): Input string to split.
+
+    Returns:
+        str: The first word from the string, or empty string if input is empty.
     """
     words = string.split(" ")
     if words:
         return words[0]
-    return ""  # Returns an empty string if the input string is empty
+    return ""
 
-def shots(team):
-    # Filter shots
-    shots = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "shot"].copy()
-    shots['is_on_target'] = (
-        (shots['lead_to_goal'] == 1) &
-        (shots['game_interruption_after'].isin(['goal_for', 'corner_for']))
+def shots(team: Team) -> Tuple[int, int]:
+    """Calculates total shots and shots on target for a team.
+
+    Filters event data for shot events and determines on-target shots based on
+    goal outcomes.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        Tuple[int, int]: Tuple of (total_shots, shots_on_target).
+    """
+    shots_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "shot"].copy()
+    shots_df['is_on_target'] = (
+        (shots_df['lead_to_goal'] == 1) &
+        (shots_df['game_interruption_after'].isin(['goal_for', 'corner_for']))
     )
-    shots['is_on_target'] = shots['is_on_target'].astype('boolean')
-    team_shots = shots[shots["team_id"] == team.team_id]
+    shots_df['is_on_target'] = shots_df['is_on_target'].astype('boolean')
+    team_shots = shots_df[shots_df["team_id"] == team.team_id]
     total = len(team_shots)
-    targeted = team_shots['is_on_target'].sum()
-    return (total,targeted)
+    on_target = team_shots['is_on_target'].sum()
+    return (total, on_target)
 
-def passess(team):
-    pass_df= st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "pass"].copy()
+def passess(team: Team) -> Tuple[int, int]:
+    """Calculates total passes and successful passes for a team.
+
+    Filters event data for pass events and counts successful passes.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        Tuple[int, int]: Tuple of (total_passes, successful_passes).
+    """
+    pass_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "pass"].copy()
     total_pass = pass_df[(pass_df["team_id"] == team.team_id)]
-    good_pass = pass_df[(pass_df["team_id"] == team.team_id) & (pass_df["pass_outcome"]== "successful")]
-    return (len(total_pass),len(good_pass))
+    good_pass = pass_df[(pass_df["team_id"] == team.team_id) & (pass_df["pass_outcome"] == "successful")]
+    return (len(total_pass), len(good_pass))
 
-def pass_accuracy(team):
-    _passess = passess(team)
-    return int(_passess[1]*100/_passess[0])
+def pass_accuracy(team: Team) -> int:
+    """Calculates pass accuracy percentage for a team.
 
-def possession(team):
-    posses = 50
-    return posses
+    Args:
+        team (Team): Team object with team_id attribute.
 
-def clearances(team):
-    clearances = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "clearance"]
-    team_clearances = clearances[clearances["team_id"] == team.team_id]
+    Returns:
+        int: Pass accuracy as a percentage (0-100).
+    """
+    passes_data = passess(team)
+    if passes_data[0] == 0:
+        return 0
+    return int(passes_data[1] * 100 / passes_data[0])
+
+def possession(team: Team) -> int:
+    """Calculates possession percentage for a team.
+
+    Currently returns a hardcoded value of 50%. Future implementation should
+    calculate actual possession from event data.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Possession percentage.
+    """
+    return 50
+
+def clearances(team: Team) -> int:
+    """Counts clearance events for a team.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Number of clearances made by the team.
+    """
+    clearances_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "clearance"]
+    team_clearances = clearances_df[clearances_df["team_id"] == team.team_id]
     return len(team_clearances)
 
-def fouls_committed(team):
-    fouls = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "foul_committed"]
-    team_fouls = fouls[fouls["team_id"] == team.team_id]
+def fouls_committed(team: Team) -> int:
+    """Counts fouls committed by a team.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Number of fouls committed by the team.
+    """
+    fouls_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "foul_committed"]
+    team_fouls = fouls_df[fouls_df["team_id"] == team.team_id]
     return len(team_fouls)
 
-def direct_disruptions(team):
-    disruptions = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_disruption"]
-    team_disruptions = disruptions[disruptions["team_id"] == team.team_id]
+def direct_disruptions(team: Team) -> int:
+    """Counts direct disruption events for a team.
+
+    Direct disruptions occur when a team directly breaks up an opponent's play.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Number of direct disruptions made by the team.
+    """
+    disruptions_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_disruption"]
+    team_disruptions = disruptions_df[disruptions_df["team_id"] == team.team_id]
     return len(team_disruptions)
 
-def direct_regains(team):
-    regains = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_regain"]
-    team_regains = regains[regains["team_id"] == team.team_id]
+def direct_regains(team: Team) -> int:
+    """Counts direct regain events for a team.
+
+    Direct regains occur when a team directly wins back the ball.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Number of direct regains by the team.
+    """
+    regains_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "direct_regain"]
+    team_regains = regains_df[regains_df["team_id"] == team.team_id]
     return len(team_regains)
 
-def possession_losses(team):
-    losses = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "possession_loss"]
-    team_losses = losses[losses["team_id"] == team.team_id]
+def possession_losses(team: Team) -> int:
+    """Counts possession loss events for a team.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        int: Number of possession losses by the team.
+    """
+    losses_df = st.session_state.event_data[st.session_state.event_data['end_type'].str.lower() == "possession_loss"]
+    team_losses = losses_df[losses_df["team_id"] == team.team_id]
     return len(team_losses)
 
-def get_stats(team):
+def get_stats(team: Team) -> dict:
+    """Aggregates all match statistics for a team.
+
+    Computes and formats all available stats including shots, passes, clearances,
+    fouls, and disruptions.
+
+    Args:
+        team (Team): Team object with team_id attribute.
+
+    Returns:
+        dict: Dictionary with formatted stat strings ready for display.
+    """
     stats = {
-            "shots":f"{shots(team)[0]}[{shots(team)[1]}]",
-            "possession":f"{possession(team)}%",
-            "passes":f"{passess(team)[0]}[{passess(team)[1]}]",
-            "passes_accuracy":f"{pass_accuracy(team)}%",
-            "clearances":f"{clearances(team)}",
-            "fouls_committed":f"{fouls_committed(team)}",
-            "direct_disruptions":f"{direct_disruptions(team)}",
-            "direct_regains":f"{direct_regains(team)}",
-            "possession_losses":f"{possession_losses(team)}",
-            }
+        "shots": f"{shots(team)[0]}[{shots(team)[1]}]",
+        "possession": f"{possession(team)}%",
+        "passes": f"{passess(team)[0]}[{passess(team)[1]}]",
+        "passes_accuracy": f"{pass_accuracy(team)}%",
+        "clearances": f"{clearances(team)}",
+        "fouls_committed": f"{fouls_committed(team)}",
+        "direct_disruptions": f"{direct_disruptions(team)}",
+        "direct_regains": f"{direct_regains(team)}",
+        "possession_losses": f"{possession_losses(team)}",
+    }
     return stats
 
-def get_players_name(team_name,match_data)->list:
+def get_players_name(team_name: str, match_data: TrackingDataset) -> List[str]:
+    """Retrieves all player names for a specific team from match data.
+
+    Args:
+        team_name (str): Name of the team.
+        match_data (TrackingDataset): SkillCorner TrackingDataset object.
+
+    Returns:
+        List[str]: List of player full names for the team.
+    """
     for team in match_data.metadata.teams:
         if team.name == team_name:
-            players_name = [player.full_name for player in team.players]
-    return players_name
+            return [player.full_name for player in team.players]
+    return []
 
-def heatmap(xs, ys,xs_shot,ys_shot,match_data):
+def heatmap(xs: pd.Series, ys: pd.Series, xs_shot: pd.Series, ys_shot: pd.Series, match_data: TrackingDataset) -> None:
+    """Generates and displays a heatmap of player movement with shot locations.
+
+    Creates a kernel density estimation (KDE) plot showing player movement patterns
+    and overlays shot locations.
+
+    Args:
+        xs (pd.Series): X coordinates of player movement events.
+        ys (pd.Series): Y coordinates of player movement events.
+        xs_shot (pd.Series): X coordinates of shot events.
+        ys_shot (pd.Series): Y coordinates of shot events.
+        match_data (TrackingDataset): SkillCorner TrackingDataset for pitch dimensions.
+    """
     pitch = Pitch(
         pitch_type="skillcorner",
-        pitch_length= match_data.metadata.coordinate_system.pitch_length,
-        pitch_width= match_data.metadata.coordinate_system.pitch_width,
+        pitch_length=match_data.metadata.coordinate_system.pitch_length,
+        pitch_width=match_data.metadata.coordinate_system.pitch_width,
         line_zorder=2,
     )
     fig, ax = pitch.draw()
-    # ax.set_title(f"#{player.jersey_no} - {player.last_name} - {player.team.name}")
+    ax.set_title(f" pass_heat-map")
     pitch.kdeplot(xs, ys, ax=ax, cmap="YlOrRd", fill=True, levels=100)
     pitch.scatter(xs_shot, ys_shot, ax=ax, c='green', s=50, edgecolors='black', label='Shots')
     ax.legend()
-
     st.pyplot(fig)
 
+def max_speed(player, tracking_df):
+    """
+    Calculates the maximum speed reached by a player during the match in m/s,
+    with filtering to remove unrealistic spikes using Mbappé's max speed as threshold.
+
+    Args:
+        player: Player object (must have `player_id`)
+        tracking_df: TrackingDataset (Kloppy or similar) with columns
+                     '{player_id}_x' and '{player_id}_y' per frame.
+
+    Returns:
+        float: Maximum speed in m/s.
+    """
+    player_id = player.player_id
+    x_col = f"{player_id}_x"
+    y_col = f"{player_id}_y"
+
+    # Convert tracking dataset to pandas
+    df = tracking_df.to_df(engine="pandas")[[x_col, y_col]].dropna(subset=[x_col, y_col])
+
+    if df.empty:
+        return 0.0
+
+    # Compute differences frame to frame
+    dx = df[x_col].diff()
+    dy = df[y_col].diff()
+
+    # Euclidean distance per frame (in meters)
+    step_distance = np.sqrt(dx**2 + dy**2)
+
+    # Frame rate
+    fps = tracking_df.metadata.frame_rate
+
+    # Maximum step per frame threshold based on realistic max speed (Mbappé ~10.28 m/s)
+    max_speed_threshold_m_s = 10.277777  # m/s
+    max_step_per_frame = max_speed_threshold_m_s / fps
+
+    # Filter unrealistic steps (likely data errors)
+    step_distance = step_distance.where(step_distance <= max_step_per_frame, 0)
+
+    # Compute speed per frame in m/s: distance(meters) * fps(frames/second) = meters/second
+    speed_m_s = step_distance * fps
+
+    # Get maximum speed
+    max_speed_value = speed_m_s.max()
+
+    return round(max_speed_value, 2)
+
+
+def shots_on_target(player: Team, match_data: TrackingDataset) -> int:
+    """Counts the number of shots on target made by a player.
+
+    Filters shot events by player_id and determines on-target shots based on
+    goal outcomes and game interruption events.
+
+    Args:
+        player (Team): Player object with player_id attribute.
+        match_data (TrackingDataset): SkillCorner TrackingDataset object.
+
+    Returns:
+        int: Number of shots on target.
+    """
+    shots_df = st.session_state.event_data[
+        (st.session_state.event_data['end_type'].str.lower() == 'shot') &
+        (st.session_state.event_data['player_id'] == int(player.player_id))
+    ].copy()
+    
+    if shots_df.empty:
+        return 0
+    
+    shots_df['is_on_target'] = (
+        (shots_df['lead_to_goal'] == 1) &
+        (shots_df['game_interruption_after'].isin(['goal_for', 'corner_for']))
+    )
+    on_target = shots_df['is_on_target'].sum()
+    return int(on_target)
+
+
+def expected_goals(player: Team, match_data: TrackingDataset) -> float:
+    """Calculates expected goals (xG) for a player.
+
+    Counts the number of shots by the player. If xG values are available in the
+    event data, they will be summed; otherwise defaults to 0.15 per shot as an estimate.
+
+    Args:
+        player (Team): Player object with player_id attribute.
+        match_data (TrackingDataset): SkillCorner TrackingDataset object.
+
+    Returns:
+        float: Expected goals value.
+    """
+    shots_df = st.session_state.event_data[
+        (st.session_state.event_data['end_type'].str.lower() == 'shot') &
+        (st.session_state.event_data['player_id'] == int(player.player_id))
+    ]
+    
+    if shots_df.empty:
+        return 0.0
+    
+    # If xG column exists, sum it; otherwise estimate 0.15 per shot
+    if 'xG' in shots_df.columns:
+        return round(shots_df['xG'].sum(), 2)
+    else:
+        return round(len(shots_df) * 0.15, 2)
+
+
+def expected_threat(player: Team, match_data: TrackingDataset) -> float:
+    """Calculates expected threat (xT) generated by a player.
+
+    Counts successful passes and estimates xT. If xT values are available in the
+    event data, they will be summed; otherwise defaults to 0.02 per successful pass.
+
+    Args:
+        player (Team): Player object with player_id attribute.
+        match_data (TrackingDataset): SkillCorner TrackingDataset object.
+
+    Returns:
+        float: Expected threat value.
+    """
+    pass_df = st.session_state.event_data[
+        (st.session_state.event_data['end_type'].str.lower() == 'pass') &
+        (st.session_state.event_data['player_id'] == int(player.player_id)) &
+        (st.session_state.event_data['pass_outcome'] == 'successful')
+    ]
+    
+    if pass_df.empty:
+        return 0.0
+    
+    # If xT column exists, sum it; otherwise estimate 0.02 per successful pass
+    if 'xT' in pass_df.columns:
+        return round(pass_df['xT'].sum(), 2)
+    else:
+        return round(len(pass_df) * 0.02, 2)
+    
+
+def shots_(player_id: float) -> int:
+    """Counts the total number of shot events for a specific player.
+
+    Filters shot events from the event data by player_id.
+
+    Args:
+        player_id (float): The unique identifier of the player.
+
+    Returns:
+        int: The number of shot events attempted by the player.
+    """
+    shot_events = st.session_state.event_data[
+        (st.session_state.event_data["end_type"] == "shot") &
+        (st.session_state.event_data["player_id"] == float(player_id))
+    ]
+    return len(shot_events)
+
+def total_shot(shot_events: pd.DataFrame) -> int:
+    """Counts the total number of shots in a given DataFrame.
+
+    Simple utility function that returns the row count of a shot events DataFrame.
+
+    Args:
+        shot_events (pd.DataFrame): DataFrame containing shot event data.
+
+    Returns:
+        int: The number of rows (shot events) in the DataFrame.
+    """
+    return len(shot_events)
+
+
+
+def offensive_action(player_id: float) -> float:
+    """Calculates the percentage of offensive actions performed by a player.
+
+    Measures the quantity and intensity of offensive actions by analyzing event subtypes
+    that indicate attacking, movement, and positioning during possession. Returns the percentage
+    of offensive actions relative to all player actions.
+
+    Offensive subtypes include: short passing reception, forward runs, positioning behind
+    defenders, dropping back, wide movement, half-space positioning, overlaps, underlaps,
+    support movement, and cross reception.
+
+    Args:
+        player_id (float): The unique identifier of the player.
+
+    Returns:
+        float: The percentage of offensive actions out of total player actions (0-100).
+    """
+    OFFENSIVE_SUBTYPES = [
+        'coming_short', 'run_ahead_of_the_ball', 'behind', 'dropping_off',
+        'pulling_wide', 'pulling_half_space', 'overlap', 'underlap',
+        'support', 'cross_receiver'
+    ]
+
+    player_events = st.session_state.event_data[
+        st.session_state.event_data['player_id'] == float(player_id)
+    ]
+    offensive_events = player_events[
+        player_events['event_subtype'].isin(OFFENSIVE_SUBTYPES)
+    ]
+    
+    if len(player_events) == 0:
+        return 0.0
+    
+    return round(len(offensive_events) / len(player_events) * 100, 2)
+
+
+def avg_ball_retention_time(player_id: float) -> float:
+    """Calculates the average ball retention time for a player during possession.
+
+    Computes the average duration the player keeps the ball during events that lead to
+    either a direct regain followed by a pass/shot, or a direct pass/shot. This metric
+    indicates how long a player typically holds the ball before releasing it.
+
+    Args:
+        player_id (float): The unique identifier of the player.
+
+    Returns:
+        float: Average retention time in seconds, with higher values indicating longer ball possession.
+    """
+    mask = (
+        (st.session_state.event_data["player_id"] == float(player_id)) & 
+        (
+            (
+                (st.session_state.event_data["end_type"] == "direct_regain") & 
+                (st.session_state.event_data["end_type"].shift(-1).isin(["pass", "shot"]))
+            ) | 
+            (st.session_state.event_data["end_type"].isin(["shot", "pass"]))
+        )
+    )
+    filtered_events = st.session_state.event_data[mask]
+    
+    if len(filtered_events) == 0:
+        return 0.0
+    
+    return round(filtered_events["duration"].sum() / len(filtered_events), 2)
+
+
+def avg_forward_pass(player_id: float) -> float:
+    """Calculates the percentage of forward passes made by a player.
+
+    Analyzes all pass events by a player and determines what proportion are forward passes
+    (passes directed toward the opponent's goal). This metric helps assess a player's
+    attacking intent and ability to progress the ball up the pitch.
+
+    Args:
+        player_id (float): The unique identifier of the player.
+
+    Returns:
+        float: The percentage of forward passes out of total passes (0-100).
+    """
+    pass_events = st.session_state.event_data[
+        (st.session_state.event_data["end_type"] == "pass") &
+        (st.session_state.event_data["player_id"] == float(player_id))
+    ]
+
+    if len(pass_events) == 0:
+        return 0.0
+
+    forward_passes = pass_events[pass_events["pass_direction"] == "forward"]
+    return round(len(forward_passes) / len(pass_events) * 100, 2)
+
+
+def pressing_engagement(player_id: float, team_id: float) -> dict:
+    """Calculates pressing and defensive engagement metrics for a player.
+
+    Analyzes defensive actions and pressing events, including direct and indirect
+    disruptions, regains, possession losses, fouls, and clearances. Returns a dictionary
+    with three key metrics:
+    
+    - avg_Pressing_actions: Player's pressing events as percentage of team's total pressing events
+    - Defensive_Action_volume: Player's defensive actions as percentage of their total actions
+    - Success_DA: Count of successful defensive actions resulting in ball recovery
+
+    Args:
+        player_id (float): The unique identifier of the player.
+        team_id (float): The unique identifier of the player's team.
+
+    Returns:
+        dict: Dictionary with three keys:
+            - 'avg_Pressing_actions' (float): Percentage of team pressing actions
+            - 'Defensive_Action_volume' (float): Percentage of player's actions that are defensive
+            - 'Success_DA' (int): Count of successful defensive actions
+    """
+    pressing_event = st.session_state.event_data[
+        (st.session_state.event_data["team_id"] == team_id) &
+        (
+            (st.session_state.event_data["event_subtype_id"].isin(
+                ["pressing", "presure", "counter_press", "recovery_press"]
+            )) | 
+            (st.session_state.event_data["end_type"].isin([
+                'indirect_disruption', 'indirect_regain',
+                'direct_regain', 'direct_disruption', 'possession_loss',
+                'foul_committed', 'clearance'
+            ]))
+        )
+    ]
+    player_pressing_event = pressing_event[
+        pressing_event["player_id"] == float(player_id)
+    ]
+
+    player_action = st.session_state.event_data[
+        st.session_state.event_data["player_id"] == float(player_id)
+    ]
+
+    success_DA = player_pressing_event[
+        player_pressing_event["end_type"].isin([
+            'indirect_disruption', 'indirect_regain',
+            'direct_regain', 'direct_disruption', 'possession_loss',
+            'foul_committed', 'clearance'
+        ])
+    ]
+    
+    avg_pressing = 0.0 if len(pressing_event) == 0 else round(len(player_pressing_event) / len(pressing_event) * 100, 2)
+    defensive_volume = 0.0 if len(player_action) == 0 else round(len(player_pressing_event) / len(player_action) * 100, 2)
+    
+    return {
+        "avg_Pressing_actions": avg_pressing,
+        "Defensive_Action_volume": defensive_volume,
+        "Success_DA": success_DA.shape[0]
+    }
+
+def plot_radar(metrics: List[str], low: List[float], high: List[float], values: List[float]) -> None:
+    """Generates and displays a radar chart comparing player metrics against benchmarks.
+
+    Creates a radar (spider) plot visualization showing player performance across multiple
+    metrics. Each metric is normalized between low and high bounds, displayed with green fill
+    and outlined vertices. The chart includes range labels, parameter labels, and spoke lines.
+
+    Args:
+        metrics (List[str]): List of metric names to display on the radar chart.
+        low (List[float]): List of minimum values (lower bound) for each metric.
+        high (List[float]): List of maximum values (upper bound) for each metric.
+        values (List[float]): List of actual player values for each metric to display.
+
+    Returns:
+        None: Displays the chart using st.pyplot().
+    """
+    radar = Radar(
+        metrics, low, high,
+        round_int=[False] * len(metrics),
+        num_rings=5,
+        ring_width=1, 
+        center_circle_radius=1
+    )
+
+    fig, ax = radar.setup_axis()
+    rings_inner = radar.draw_circles(
+        ax=ax, facecolor="#e4e8e9", edgecolor="#e1e6e7", alpha=0.4
+    )
+    radar_output = radar.draw_radar(
+        values, ax=ax,
+        kwargs_radar={'facecolor': "#0e8d34", 'alpha': 0.7},
+        kwargs_rings={'facecolor': "#0e8d34"}
+    )
+    radar_poly, rings_outer, vertices = radar_output
+    
+    radar.draw_range_labels(ax=ax, fontsize=15)
+    radar.draw_param_labels(ax=ax, fontsize=15)
+    radar.spoke(ax=ax, color='#a6a4a1', linestyle='--', zorder=2)
+    
+    ax.scatter(
+        vertices[:, 0], vertices[:, 1],
+        c="#047426", edgecolors="#055216", marker='o', s=150, zorder=2
+    )
+    
+    # Close polygon and plot border
+    polygon = np.vstack([vertices, vertices[0]])
+    ax.plot(polygon[:, 0], polygon[:, 1], color="#055216", linewidth=3, zorder=3)
+    
+    st.pyplot(fig)
+
+    
 # variables
 SIMPLE_LOGO = "./src/images/logo.png"  # logo when no side =bar
 LOGO_WITH_TEXT = "./src/images/logo_with_text.png"  # central logo and siderbar logo
