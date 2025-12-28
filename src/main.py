@@ -3,6 +3,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
+
 from kloppy import skillcorner
 from pathlib import Path
 import sys
@@ -213,11 +215,28 @@ with tabs[3]:
             ][0]
 
             # Print player name and position
+            # If position is None or unknown, get from event_data
+            player_position = selected_player.position
+            if not player_position or str(player_position).lower() in ["none", "unknown", "nan"]:
+                # Try to get from event_data
+                player_events = st.session_state.event_data[
+                    st.session_state.event_data["player_id"] == float(selected_player.player_id)
+                ]
+                # Get the most common non-null position
+                if not player_events.empty and "player_position" in player_events.columns:
+                    pos_counts = player_events["player_position"].dropna()
+                    if not pos_counts.empty:
+                        player_position = pos_counts.mode().iloc[0]
+                    else:
+                        player_position = "Unknown"
+                else:
+                    player_position = "Unknown"
+
             st.markdown(
                 f"""
                 <div class="player">
                     <p class="name">{selected_player_name}</p>
-                    <p class="position">{selected_player.position}</p>
+                    <p class="position">{player_position}</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -288,25 +307,30 @@ with tabs[3]:
                     25,
                     25,
                 ]
-                team_id = st.session_state.event_data[
-                    st.session_state.event_data["player_id"]
-                    == float(selected_player.player_id)
-                ]["team_id"].unique()[0]
-                values = [
-                    shots_(selected_player.player_id),
-                    offensive_action(selected_player.player_id),
-                    pressing_engagement(selected_player.player_id, team_id)[
-                        "Defensive_Action_volume"
-                    ],
-                    avg_ball_retention_time(selected_player.player_id),
-                    avg_forward_pass(selected_player.player_id),
-                    pressing_engagement(selected_player.player_id, team_id)[
-                        "avg_Pressing_actions"
-                    ],
-                    pressing_engagement(selected_player.player_id, team_id)[
-                        "Success_DA"
-                    ],
+                player_events = st.session_state.event_data[
+                    st.session_state.event_data["player_id"] == float(selected_player.player_id)
                 ]
+                team_id_arr = player_events["team_id"].unique()
+                if len(team_id_arr) > 0:
+                    team_id = team_id_arr[0]
+                    values = [
+                        shots_(selected_player.player_id),
+                        offensive_action(selected_player.player_id),
+                        pressing_engagement(selected_player.player_id, team_id)[
+                            "Defensive_Action_volume"
+                        ],
+                        avg_ball_retention_time(selected_player.player_id),
+                        avg_forward_pass(selected_player.player_id),
+                        pressing_engagement(selected_player.player_id, team_id)[
+                            "avg_Pressing_actions"
+                        ],
+                        pressing_engagement(selected_player.player_id, team_id)[
+                            "Success_DA"
+                        ],
+                    ]
+                else:
+                    # No events for this player, fill with zeros
+                    values = [0, 0, 0, 0, 0, 0, 0]
                 plot_radar(metrics=metrics, low=low, high=high, values=values)
 
             with heatmap_:
@@ -378,10 +402,6 @@ with tabs[3]:
                     <p class="value">{covered_distance(selected_player, match_data):.2f} km</p>
                     <p class="label">Max speed</p>
                     <p class="value">{max_speed(selected_player, match_data):.1f} m/s</p>
-                    <p class="label">Expected Threat (xT)</p>
-                    <p class="value">{expected_threat(selected_player, match_data):.2f}</p>
-                    <p class="label">Expected Goals (xG)</p>
-                    <p class="value">{expected_goals(selected_player, match_data):.2f}</p>
                     <p class="label">Shots on target</p>
                     <p class="value">{shots_on_target(selected_player, match_data)}</p>
                 </div>
@@ -389,6 +409,117 @@ with tabs[3]:
                     unsafe_allow_html=True,
                 )
 
+            plot_1, plot_2, plot_3 = st.columns([.33, .33, .33])
+            # Plot 1: Ball Retention
+            with plot_1:
+                player_events = st.session_state.event_data[
+                    st.session_state.event_data["player_id"] == float(selected_player.player_id)
+                ]
+                retention_events = player_events[player_events["duration"] > 0]
+                durations = retention_events[["event_id", "duration", "end_type"]].reset_index(drop=True)
+                mean_retention = durations["duration"].mean()
+                fig = px.bar(
+                    x=durations["event_id"],
+                    y=durations["duration"],
+                    labels={"x": "Event Id", "y": "Ball duration (s)"},
+                    title=f"Ball Retention for {selected_player_name}",
+                    color_discrete_sequence=["#0e8d34"],
+                    custom_data=[durations["end_type"]]
+                )
+                fig.update_traces(
+                    hovertemplate="Event Id: %{x}<br>Ball duration (s): %{y}<br>Event type: %{customdata[0]}<extra></extra>"
+                )
+                fig.add_trace(
+                    go.Scatter(
+                        x=durations["event_id"],
+                        y=[mean_retention] * len(durations),
+                        mode="lines",
+                        line=dict(color="red", dash="dash"),
+                        name=f"Mean: {mean_retention:.2f}s",
+                        hovertemplate="Mean: %{y:.2f}s<extra></extra>"
+                    )
+                )
+                fig.update_layout(showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Plot 2: Offensive Actions
+            with plot_2:
+                OFFENSIVE_SUBTYPES = [
+                    "coming_short", "run_ahead_of_the_ball", "behind", "dropping_off", "pulling_wide",
+                    "pulling_half_space", "overlap", "underlap", "support", "cross_receiver"
+                ]
+                player_events = st.session_state.event_data[
+                    st.session_state.event_data["player_id"] == float(selected_player.player_id)
+                ]
+                offensive_events = player_events[player_events["event_subtype"].isin(OFFENSIVE_SUBTYPES)]
+                if not offensive_events.empty:
+                    offensive_df = offensive_events[["event_id", "event_subtype", "duration", "end_type"]].reset_index(drop=True)
+                    mean_offensive = offensive_df["duration"].mean() if "duration" in offensive_df else 0
+                    fig2 = px.bar(
+                        x=offensive_df["event_id"],
+                        y=offensive_df["duration"] if "duration" in offensive_df else [0]*len(offensive_df),
+                        labels={"x": "Event Id", "y": "Duration (s)"},
+                        title=f"Offensive Actions for {selected_player_name}",
+                        color_discrete_sequence=["#217c23"],
+                        custom_data=[offensive_df["event_subtype"], offensive_df["end_type"]]
+                    )
+                    fig2.update_traces(
+                        hovertemplate="Event Id: %{x}<br>Duration (s): %{y}<br>Subtype: %{customdata[0]}<br>Event type: %{customdata[1]}<extra></extra>"
+                    )
+                    fig2.add_trace(
+                        go.Scatter(
+                            x=offensive_df["event_id"],
+                            y=[mean_offensive] * len(offensive_df),
+                            mode="lines",
+                            line=dict(color="red", dash="dash"),
+                            name=f"Mean: {mean_offensive:.2f}s",
+                            hovertemplate="Mean: %{y:.2f}s<extra></extra>"
+                        )
+                    )
+                    fig2.update_layout(showlegend=True)
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.info("No offensive actions found for this player.")
+
+            # Plot 3: Defensive Actions
+            with plot_3:
+                DEFENSIVE_END_TYPES = [
+                    "indirect_disruption", "indirect_regain", "direct_regain", "direct_disruption",
+                    "possession_loss", "foul_committed", "clearance"
+                ]
+                player_events = st.session_state.event_data[
+                    st.session_state.event_data["player_id"] == float(selected_player.player_id)
+                ]
+                defensive_events = player_events[player_events["end_type"].isin(DEFENSIVE_END_TYPES)]
+                if not defensive_events.empty:
+                    defensive_df = defensive_events[["event_id", "end_type", "duration", "event_subtype"]].reset_index(drop=True)
+                    mean_defensive = defensive_df["duration"].mean() if "duration" in defensive_df else 0
+                    fig3 = px.bar(
+                        x=defensive_df["event_id"],
+                        y=defensive_df["duration"] if "duration" in defensive_df else [0]*len(defensive_df),
+                        labels={"x": "Event Id", "y": "Duration (s)"},
+                        title=f"Defensive Actions for {selected_player_name}",
+                        color_discrete_sequence=["#052B72"],
+                        custom_data=[defensive_df["end_type"], defensive_df["event_subtype"]]
+                    )
+                    fig3.update_traces(
+                        hovertemplate="Event Id: %{x}<br>Duration (s): %{y}<br>Event type: %{customdata[0]}<br>Subtype: %{customdata[1]}<extra></extra>"
+                    )
+                    fig3.add_trace(
+                        go.Scatter(
+                            x=defensive_df["event_id"],
+                            y=[mean_defensive] * len(defensive_df),
+                            mode="lines",
+                            line=dict(color="red", dash="dash"),
+                            name=f"Mean: {mean_defensive:.2f}s",
+                            hovertemplate="Mean: %{y:.2f}s<extra></extra>"
+                        )
+                    )
+                    fig3.update_layout(showlegend=True)
+                    st.plotly_chart(fig3, use_container_width=True)
+                else:
+                    st.info("No defensive actions found for this player.")
+                
 
 # Tab 4: Player Performance (Comparison)
 with tabs[4]:

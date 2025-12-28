@@ -801,8 +801,9 @@ def heatmap(
     fig, ax = pitch.draw()
     ax.set_title("Pass / movement heatmap (L→R normalized)")
 
-    # Only plot KDE if we have movement data
-    if len(xs_plot) > 0:
+
+    # Only plot KDE if we have enough movement data
+    if len(xs_plot) > 1 and len(ys_plot) > 1:
         pitch.kdeplot(
             xs_plot,
             ys_plot,
@@ -811,6 +812,8 @@ def heatmap(
             fill=True,
             levels=100
         )
+    else:
+        ax.text(0.5, 0.5, "Not enough data for heatmap", ha="center", va="center", fontsize=14, transform=ax.transAxes)
 
     # Only plot shots if we have shot data
     if len(xs_shot_plot) > 0:
