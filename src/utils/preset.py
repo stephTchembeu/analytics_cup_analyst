@@ -15,6 +15,96 @@ from kloppy.domain.models.tracking import TrackingDataset
 from .logo_loader import get_team_logo_url, FALLBACK_LOGO
 
 
+# ============================================================================
+# ERROR HANDLING HELPER FUNCTIONS
+# ============================================================================
+
+def safe_get_event_data() -> pd.DataFrame:
+    """Safely retrieves event data from session state with validation.
+    
+    Validates that event_data exists, is a DataFrame, and is not empty.
+    
+    Returns:
+        pd.DataFrame: Event data if valid, empty DataFrame otherwise.
+        
+    Raises:
+        ValueError: If event data is not available or invalid.
+    """
+    if "event_data" not in st.session_state:
+        raise ValueError("Event data has not been loaded. Please ensure event data is loaded before proceeding.")
+    
+    event_data = st.session_state.event_data
+    
+    if event_data is None:
+        raise ValueError("Event data is None. Failed to load event data from source.")
+    
+    if not isinstance(event_data, pd.DataFrame):
+        raise TypeError(f"Event data must be a DataFrame, got {type(event_data).__name__}")
+    
+    if event_data.empty:
+        raise ValueError("Event data is empty. No events available for analysis.")
+    
+    return event_data
+
+
+def safe_get_match_data() -> TrackingDataset:
+    """Safely retrieves match data from session state with validation.
+    
+    Validates that match_data exists and is a TrackingDataset.
+    
+    Returns:
+        TrackingDataset: Match data if valid.
+        
+    Raises:
+        ValueError: If match data is not available or invalid.
+    """
+    if "match_data" not in st.session_state:
+        raise ValueError("Match data has not been loaded. Please ensure match data is loaded before proceeding.")
+    
+    match_data = st.session_state.match_data
+    
+    if match_data is None:
+        raise ValueError("Match data is None. Failed to load match data from SkillCorner API.")
+    
+    if not isinstance(match_data, TrackingDataset):
+        raise TypeError(f"Match data must be a TrackingDataset, got {type(match_data).__name__}")
+    
+    return match_data
+
+
+def display_status_messages() -> None:
+    """Displays all data loading status messages in the sidebar under the selectbox.
+    
+    Shows messages for:
+    - Match loading status (from get_teams_in_matches)
+    - Match data loading status
+    - Event data loading status
+    """
+    # Match loading status
+    if "match_loading_message" in st.session_state:
+        msg = st.session_state.match_loading_message
+        if msg["type"] == "success":
+            st.sidebar.success(msg["text"])
+        elif msg["type"] == "warning":
+            st.sidebar.warning(msg["text"])
+    
+    # Match data loading status
+    if "match_data_error" in st.session_state and st.session_state.match_data_error:
+        st.sidebar.error(f"Match Data Error: {st.session_state.match_data_error}")
+    elif "match_data" in st.session_state and st.session_state.match_data:
+        st.sidebar.success("Match data loaded")
+    
+    # Event data loading status
+    if "event_data_error" in st.session_state and st.session_state.event_data_error:
+        st.sidebar.error(f"Event Data Error: {st.session_state.event_data_error}")
+    elif "event_data" in st.session_state and st.session_state.event_data is not None:
+        st.sidebar.success("Event data loaded")
+
+
+# ============================================================================
+# UI FUNCTIONS
+# ============================================================================
+
 # Function
 def render_team_logo(team_name: str, align: str = "left", width: int = 100) -> None:
     """Renders the team logo with the team name below it using HTML.
@@ -112,18 +202,20 @@ def get_teams_in_matches(
             failed_matches.append((match_id, str(e)))
     else:
         # All matches processed (else executes after the loop completes, unless break occurs)
+        # Store status in session state for later display by display_status_messages()
         if not failed_matches:
             # All matches loaded successfully
-            st.sidebar.success(
-                f"Successfully loaded {len(output)} match{'es' if len(output) != 1 else ''}!"
-            )
+            st.session_state.match_loading_message = {
+                "type": "success",
+                "text": f"Successfully loaded {len(output)} match{'es' if len(output) != 1 else ''}!"
+            }
         else:
             # Some matches failed
             failed_ids = ", ".join(str(m[0]) for m in failed_matches)
-            st.sidebar.warning(
-                f"Loaded {len(output)} match{'es' if len(output) != 1 else ''} "
-                f"({len(failed_matches)} failed: {failed_ids}). Continuing with available matches."
-            )
+            st.session_state.match_loading_message = {
+                "type": "warning",
+                "text": f"Loaded {len(output)} match{'es' if len(output) != 1 else ''} ({len(failed_matches)} failed: {failed_ids}). Continuing with available matches."
+            }
     
     return output
 
@@ -272,17 +364,42 @@ def shots(team: Team) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: Tuple of (total_shots, shots_on_target).
     """
-    shots_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "shot"
-    ].copy()
-    shots_df["is_on_target"] = (shots_df["lead_to_goal"] == 1) & (
-        shots_df["game_interruption_after"].isin(["goal_for", "corner_for"])
-    )
-    shots_df["is_on_target"] = shots_df["is_on_target"].astype("boolean")
-    team_shots = shots_df[shots_df["team_id"] == team.team_id]
-    total = len(team_shots)
-    on_target = team_shots["is_on_target"].sum()
-    return (total, on_target)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id', 'lead_to_goal', 'game_interruption_after']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        shots_df = event_data[
+            event_data["end_type"].str.lower() == "shot"
+        ].copy()
+        shots_df["is_on_target"] = (shots_df["lead_to_goal"] == 1) & (
+            shots_df["game_interruption_after"].isin(["goal_for", "corner_for"])
+        )
+        shots_df["is_on_target"] = shots_df["is_on_target"].astype("boolean")
+        team_shots = shots_df[shots_df["team_id"] == team.team_id]
+        total = len(team_shots)
+        on_target = team_shots["is_on_target"].sum()
+        result = (total, on_target)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating shots: {str(e)}")
+        result = (0, 0)
+    else:
+        # Successfully calculated shots
+        return result
+    
+    return result
 
 
 def passess(team: Team) -> Tuple[int, int]:
@@ -296,14 +413,39 @@ def passess(team: Team) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: Tuple of (total_passes, successful_passes).
     """
-    pass_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "pass"
-    ].copy()
-    total_pass = pass_df[(pass_df["team_id"] == team.team_id)]
-    good_pass = pass_df[
-        (pass_df["team_id"] == team.team_id) & (pass_df["pass_outcome"] == "successful")
-    ]
-    return (len(total_pass), len(good_pass))
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id', 'pass_outcome']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        pass_df = event_data[
+            event_data["end_type"].str.lower() == "pass"
+        ].copy()
+        total_pass = pass_df[(pass_df["team_id"] == team.team_id)]
+        good_pass = pass_df[
+            (pass_df["team_id"] == team.team_id) & (pass_df["pass_outcome"] == "successful")
+        ]
+        result = (len(total_pass), len(good_pass))
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating passes: {str(e)}")
+        result = (0, 0)
+    else:
+        # Successfully calculated passes
+        return result
+    
+    return result
 
 
 def pass_accuracy(team: Team) -> int:
@@ -322,27 +464,52 @@ def pass_accuracy(team: Team) -> int:
 
 
 def possession(team: Team) -> int:
-    """Calculates possession percentage for a team based on event data.
+    """Calculates possession percentage for a team based on event duration.
 
-    Calculates possession by counting the number of events (passes, shots, etc.)
+    Calculates possession by summing the duration of events (in seconds)
     performed by each team and computing the percentage.
 
     Args:
         team (Team): Team object with team_id attribute.
 
     Returns:
-        int: Possession percentage.
+        int: Possession percentage (rounded up if decimal > 0.5).
     """
-    # Get all events for both teams
-    team_events = st.session_state.event_data[
-        st.session_state.event_data["team_id"] == team.team_id
-    ]
-    total_events = len(st.session_state.event_data)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['team_id', 'duration']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        # Get all events for both teams
+        team_events = event_data[event_data["team_id"] == team.team_id]
+        total_duration = event_data['duration'].sum()
+        
+        if total_duration == 0:
+            result = 50
+        else:
+            team_duration = team_events['duration'].sum()
+            possession_value = (team_duration / total_duration) * 100
+            # Round to nearest integer (round up if decimal > 0.5)
+            result = round(possession_value)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating possession: {str(e)}")
+        result = 50
+    else:
+        return result
     
-    if total_events == 0:
-        return 50
-    
-    return int((len(team_events) / total_events) * 100)
+    return result
 
 
 def clearances(team: Team) -> int:
@@ -354,11 +521,33 @@ def clearances(team: Team) -> int:
     Returns:
         int: Number of clearances made by the team.
     """
-    clearances_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "clearance"
-    ]
-    team_clearances = clearances_df[clearances_df["team_id"] == team.team_id]
-    return len(team_clearances)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        clearances_df = event_data[event_data["end_type"].str.lower() == "clearance"]
+        team_clearances = clearances_df[clearances_df["team_id"] == team.team_id]
+        result = len(team_clearances)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating clearances: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
 
 
 def fouls_committed(team: Team) -> int:
@@ -370,11 +559,33 @@ def fouls_committed(team: Team) -> int:
     Returns:
         int: Number of fouls committed by the team.
     """
-    fouls_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "foul_committed"
-    ]
-    team_fouls = fouls_df[fouls_df["team_id"] == team.team_id]
-    return len(team_fouls)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        fouls_df = event_data[event_data["end_type"].str.lower() == "foul_committed"]
+        team_fouls = fouls_df[fouls_df["team_id"] == team.team_id]
+        result = len(team_fouls)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating fouls: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
 
 
 def direct_disruptions(team: Team) -> int:
@@ -388,11 +599,33 @@ def direct_disruptions(team: Team) -> int:
     Returns:
         int: Number of direct disruptions made by the team.
     """
-    disruptions_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "direct_disruption"
-    ]
-    team_disruptions = disruptions_df[disruptions_df["team_id"] == team.team_id]
-    return len(team_disruptions)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        disruptions_df = event_data[event_data["end_type"].str.lower() == "direct_disruption"]
+        team_disruptions = disruptions_df[disruptions_df["team_id"] == team.team_id]
+        result = len(team_disruptions)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating direct disruptions: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
 
 
 def direct_regains(team: Team) -> int:
@@ -406,11 +639,33 @@ def direct_regains(team: Team) -> int:
     Returns:
         int: Number of direct regains by the team.
     """
-    regains_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "direct_regain"
-    ]
-    team_regains = regains_df[regains_df["team_id"] == team.team_id]
-    return len(team_regains)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        regains_df = event_data[event_data["end_type"].str.lower() == "direct_regain"]
+        team_regains = regains_df[regains_df["team_id"] == team.team_id]
+        result = len(team_regains)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating direct regains: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
 
 
 def possession_losses(team: Team) -> int:
@@ -422,11 +677,33 @@ def possession_losses(team: Team) -> int:
     Returns:
         int: Number of possession losses by the team.
     """
-    losses_df = st.session_state.event_data[
-        st.session_state.event_data["end_type"].str.lower() == "possession_loss"
-    ]
-    team_losses = losses_df[losses_df["team_id"] == team.team_id]
-    return len(team_losses)
+    try:
+        # Validate input
+        if not isinstance(team, Team):
+            raise TypeError(f"Expected Team object, got {type(team).__name__}")
+        
+        if not hasattr(team, 'team_id'):
+            raise AttributeError("Team object missing 'team_id' attribute")
+        
+        # Get event data
+        event_data = safe_get_event_data()
+        
+        # Validate required columns
+        required_cols = ['end_type', 'team_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        losses_df = event_data[event_data["end_type"].str.lower() == "possession_loss"]
+        team_losses = losses_df[losses_df["team_id"] == team.team_id]
+        result = len(team_losses)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating possession losses: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
 
 
 def get_stats(team: Team) -> dict:

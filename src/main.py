@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.preset import (
     preset_app,
+    display_status_messages,
     render_team_logo,
     get_stats,
     get_players_name,
@@ -66,11 +67,17 @@ preset_app()
 # Main tabs
 tabs = st.tabs(TAB_NAMES)
 
-# data_of_the_selected_match
-match_data = skillcorner.load_open_data(
-    match_id=st.session_state.selected_match_id,
-    coordinates="skillcorner",
-)
+# Load match data with error handling
+try:
+    match_data = skillcorner.load_open_data(
+        match_id=st.session_state.selected_match_id,
+        coordinates="skillcorner",
+    )
+    st.session_state.match_data = match_data
+    st.session_state.match_data_error = None
+except Exception as e:
+    st.session_state.match_data = None
+    st.session_state.match_data_error = str(e)
 
 
 @st.cache_data
@@ -79,7 +86,25 @@ def load_event_data(game_id):
     return pd.read_csv(url)
 
 
-st.session_state.event_data = load_event_data(match_data.metadata.game_id)
+# Load event data with error handling (only if match_data loaded successfully)
+if st.session_state.get("match_data") is not None:
+    try:
+        st.session_state.event_data = load_event_data(st.session_state.match_data.metadata.game_id)
+        st.session_state.event_data_error = None
+    except Exception as e:
+        st.session_state.event_data_error = str(e)
+        st.session_state.event_data = None
+else:
+    st.session_state.event_data = None
+    st.session_state.event_data_error = "Match data not loaded"
+
+# Display all status messages under the selectbox
+display_status_messages()
+
+# Get match data safely
+match_data = st.session_state.get("match_data")
+if match_data is None:
+    st.stop()
 
 home, away = match_data.metadata.teams
 

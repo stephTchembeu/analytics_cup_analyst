@@ -26,22 +26,27 @@ class TestPitchControlCalculations:
             from utils.pitch_control import calculate_pitch_control
         except ImportError:
             pytest.skip("pitch_control module not available")
-        
-        mock_tracking_data = create_mock_tracking_dataset()
-        # Add proper numeric attributes instead of Mock objects
-        mock_tracking_data.metadata.coordinate_system.pitch_length = 105.0
-        mock_tracking_data.metadata.coordinate_system.pitch_width = 68.0
-        
-        team = create_mock_team()
-        
-        # Function may return various types depending on implementation
+
+        # Use simple player positions and numeric pitch dimensions
+        player_positions = {
+            'home': [(0, 0), (10, 10)],
+            'away': [(-10, -10), (20, 20)]
+        }
+        pitch_length = 105.0
+        pitch_width = 68.0
+
         try:
-            result = calculate_pitch_control(mock_tracking_data, team)
-            assert result is not None or result is None  # Should complete without error
-        except (AttributeError, TypeError) as e:
-            # Skip if function expects real tracking data structure
-            if "frames" in str(e) or "tracking" in str(e):
-                pytest.skip("Function requires real tracking data structure")
+            control_grid, x_grid, y_grid = calculate_pitch_control(
+                player_positions,
+                pitch_length=pitch_length,
+                pitch_width=pitch_width,
+                grid_size=10,
+                sigma=2.0
+            )
+            assert control_grid is not None
+            assert x_grid is not None
+            assert y_grid is not None
+        except Exception as e:
             raise
 
     @patch('utils.pitch_control.st')
@@ -117,21 +122,16 @@ class TestSpaceControlMetrics:
             from utils.pitch_control import calculate_space_control_metrics
         except ImportError:
             pytest.skip("pitch_control module not available")
-        
-        mock_tracking_data = create_mock_tracking_dataset()
-        # Ensure numeric attributes
-        mock_tracking_data.metadata.coordinate_system.pitch_length = 105.0
-        mock_tracking_data.metadata.coordinate_system.pitch_width = 68.0
-        
-        team = create_mock_team()
-        
+
+        # Use a real numpy array for control_grid
+        control_grid = np.random.uniform(-1, 1, (10, 10))
+        pitch_length = 105.0
+        pitch_width = 68.0
+
         try:
-            result = calculate_space_control_metrics(mock_tracking_data, team)
-            # Result should be dict or None
-            assert isinstance(result, (dict, type(None)))
-        except (AttributeError, TypeError) as e:
-            if "frames" in str(e) or "tracking" in str(e):
-                pytest.skip("Function requires real tracking data structure")
+            result = calculate_space_control_metrics(control_grid, pitch_length, pitch_width)
+            assert isinstance(result, dict)
+        except Exception as e:
             raise
 
 
