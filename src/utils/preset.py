@@ -12,8 +12,10 @@ from mplsoccer import Radar, FontManager, grid
 from kloppy.domain.models.common import Team
 from kloppy.domain.models.tracking import TrackingDataset
 
-from .logo_loader import get_team_logo_url, FALLBACK_LOGO
-
+from .logo_loader import get_team_logo, FALLBACK_LOGO
+from utils.team_stats import(
+    plot_formation,
+)
 
 # ============================================================================
 # ERROR HANDLING HELPER FUNCTIONS
@@ -106,38 +108,53 @@ def display_status_messages() -> None:
 # ============================================================================
 
 # Function
-def render_team_logo(team_name: str, align: str = "left", width: int = 100) -> None:
-    """Renders the team logo with the team name below it using HTML.
-
-    Fetches the logo from Wikipedia API or uses a fallback image if not found.
+def render_team_logo(
+    team_id: int | str,
+    team_name: str,
+    align: str = "left",
+    width: int = 100
+) -> None:
+    """
+    Renders a team logo (local file) with the team name below it using HTML.
 
     Args:
-        team_name (str): The name of the team to display.
-        align (str): Text alignment for the logo and name ('left' or 'right').
-        width (int): The width of the logo image in pixels.
+        team_id (int): Team identifier used to fetch the local logo.
+        team_name (str): Name of the team to display.
+        align (str): Text alignment ('left', 'right', 'center').
+        width (int): Logo width in pixels.
     """
-    logo_url = get_team_logo_url(team_name)
 
-    if logo_url:
-        img_html = f'<img src="{logo_url}" width="{width}"/>'
-    elif os.path.exists(FALLBACK_LOGO):
-        encoded = base64.b64encode(open(FALLBACK_LOGO, "rb").read()).decode()
-        img_html = f'<img src="data:image/png;base64,{encoded}" width="{width}"/>'
-    else:
+    logo_path = get_team_logo(team_id)
+
+    if not os.path.exists(logo_path):
         st.error("No logo found")
         return
 
+    with open(logo_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+
     st.markdown(
-        f"""
-        <div style="text-align: {align};">
-            {img_html}
-            <p style="font-size: 0.8rem; margin-top: 0.3rem; ">
-                {team_name.title()}
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    f"""
+    <div style="text-align: center;">
+        <img 
+            src="data:image/png;base64,{encoded}" 
+            style="width: {width}px; display: block; margin: auto;"
+        />
+        <p style="
+            font-size: 0.95rem;
+            font_weight:"bold";
+            margin-top: 0.5rem;
+            line-height: 1.1;
+            word-wrap: break-word;
+            text-align: center;
+        ">
+            {team_name}
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 
 def covered_distance(player, tracking_df: TrackingDataset) -> float:
@@ -757,9 +774,9 @@ def heatmap(
     attacking_side_shot: pd.Series,
     match_data: TrackingDataset,
 ) -> None:
-    """Generates and displays a heatmap of player movements and shot locations.
+    """Generates and displays a heatmap of player passes and shot locations.
 
-    Creates a visualization showing where a player spends most of their time on the pitch
+    Creates a visualization showing where a player passes positions on the pitch
     using kernel density estimation (KDE), with shot locations overlaid as scatter points.
     Normalizes coordinates so that all movements are shown from left to right attacking direction.
 
@@ -799,7 +816,7 @@ def heatmap(
     )
 
     fig, ax = pitch.draw()
-    ax.set_title("Pass / movement heatmap (L→R normalized)")
+    ax.set_title("Pass heatmap")
 
 
     # Only plot KDE if we have enough movement data
@@ -1331,6 +1348,101 @@ def plot_radar(
     st.pyplot(fig)
 
 
+def match_available() -> bool:
+    """
+    Check if a match has been selected in the current session.
+
+    Verifies whether the 'selected_match' key exists in the Streamlit session state
+    and contains a truthy value.
+
+    Returns:
+        bool: True if a match is selected, False otherwise
+    """
+    return bool(st.session_state.get("selected_match"))
+
+
+def title() -> None:
+    """
+    Display the title header for the current tab.
+
+    Shows "Player Performance Comparison" as the main header in the Streamlit interface.
+
+    Returns:
+        None
+    """
+    st.header("Player Performance Comparison")
+
+
+def sub_title(subtitle: str) -> None:
+    """
+    Display a subheader in the Streamlit interface.
+
+    Args:
+        subtitle: The text to display as a subheader
+
+    Returns:
+        None
+    """
+    st.subheader(subtitle)
+
+def get_radar_values(player) -> List[float]:
+    """
+    Extract radar chart values for a player's performance metrics.
+
+    Collects seven key performance indicators including shots, offensive actions,
+    defensive actions, ball retention, passing, and pressing statistics for
+    radar chart visualization.
+
+    Args:
+        player: Player object containing player_id, team information, and other attributes
+
+    Returns:
+        List[float]: List of seven radar chart values in order:
+                    [total_shots, offensive_actions, defensive_action_volume,
+                     avg_ball_retention_time, avg_forward_passes, avg_pressing_actions,
+                     successful_defensive_actions]
+    """
+    team_id = getattr(player.team, "team_id", None)
+    pe = pressing_engagement(player.player_id, team_id)
+    data = [
+        shots_(player.player_id),
+        offensive_action(player.player_id),
+        pe["Defensive_Action_volume"],
+        avg_ball_retention_time(player.player_id),
+        avg_forward_pass(player.player_id),
+        pe["avg_Pressing_actions"],
+        pe["Success_DA"],
+    ]
+    return data
+
+def get_upper_bound() -> List[float]:
+    """
+    Calculate upper bounds for radar chart visualization.
+
+    Computes maximum values for each metric to properly scale radar charts,
+    based on match event data stored in session state.
+
+    Returns:
+        List[float]: List of seven upper bound values corresponding to metrics:
+                    [shots_bound, speed_bound, action_bound, duration_bound,
+                     pass_bound, pressing_bound, success_bound]
+    """
+    return [
+        len(
+            st.session_state.event_data[
+                st.session_state.event_data["end_type"] == "shot"
+            ]
+        )
+        * 1.2,
+        25,
+        25,
+        round(st.session_state.event_data["duration"].mean() * 1.5, 2),
+        25,
+        25,
+        25,
+    ]
+
+
 # variables
 SIMPLE_LOGO = "./src/images/logo.png"  # logo when no side bar
 LOGO_WITH_TEXT = "./src/images/logo_with_text.png"  # central logo and sidebar logo
@@ -1360,3 +1472,26 @@ STATS_LABELS = [
     "Direct regains",
     "Possession losses",
 ]
+
+
+RADAR_METRICS = [
+        "n_Shot",
+        "offensive_action %",
+        "Defensive_Action %",
+        "Ball retention",
+        "avg_forward_Pass %",
+        "avg_Pressing_actions %",
+        "Success_DA %",
+    ]
+LOWER_BOUNDS = [0, 0, 0, 0, 0, 0, 0]
+OFFENSIVE_SUBTYPES = [
+                    "coming_short", "run_ahead_of_the_ball", "behind", "dropping_off", "pulling_wide",
+                    "pulling_half_space", "overlap", "underlap", "support", "cross_receiver"
+                ]
+DEFENSIVE_END_TYPES = [
+                    "indirect_disruption", "indirect_regain", "direct_regain", "direct_disruption",
+                    "possession_loss", "foul_committed", "clearance"
+                ]
+TEAM_colors = {"Auckland FC":"#092bee",
+               "Newcastle United Jets FC": "#C9B36A",
+               }

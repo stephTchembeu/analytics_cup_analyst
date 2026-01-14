@@ -211,3 +211,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+refactored.py
+raw_test_code.py
