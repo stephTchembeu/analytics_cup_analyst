@@ -1,11 +1,7 @@
 from typing import List
 from utils.player_profiling import get_position,get_player_name_from_event
 import streamlit as st
-import mplsoccer
-st.write(mplsoccer.__version__)
-
-from mplsoccer.pitch import VerticalPitch
-
+from mplsoccer import VerticalPitch
 import pandas as pd
 import numpy as np
 import plotly.express as px

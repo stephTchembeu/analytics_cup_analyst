@@ -5,6 +5,6 @@ numpy
 pandas
 kloppy
 pytest>=7.0.0
-matplotlib
+matplotlib==3.9.2
 plotly
-mplsoccer>=1.5.0
+mplsoccer==1.5.0
