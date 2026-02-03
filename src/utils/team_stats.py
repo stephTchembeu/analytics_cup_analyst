@@ -2,7 +2,7 @@ from typing import List
 from utils.player_profiling import get_position,get_player_name_from_event
 import streamlit as st
 import mplsoccer
-print(mplsoccer.__version__)
+st.write(mplsoccer.__version__)
 
 from mplsoccer.pitch import VerticalPitch
 
