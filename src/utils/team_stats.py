@@ -11,6 +11,7 @@ from collections import defaultdict
 from mplsoccer import Pitch
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch
 
 
 
@@ -147,28 +148,6 @@ def plot_formation(
         scatter_objects.append(sc)
         metadata.append(player)
     st.pyplot(fig)
-
-def get_players_of(data:TrackingDataset,target_team:Team,frame_number:int):
-    player_list = []
-    for player in data.frames[frame_number].players_coordinates.keys():
-        if str(player.team.name) == str(target_team.name):
-            player_list.append(player)
-    return player_list
-
-def fetch_player_data(event_data:pd.DataFrame,list_players:List):
-    players_coordinates = {
-        "id":[],
-        "jersey_no":[],
-        "name":[],
-        "position":[]
-    }
-
-    for player in list_players:
-        players_coordinates["jersey_no"].append(player.jersey_no)
-        players_coordinates["name"].append(get_player_name_from_event(player.player_id,event_data))
-        players_coordinates["id"].append(player.player_id)
-        players_coordinates["position"].append(get_position(player.player_id,event_data))
-    return players_coordinates
 
 def show_formation(team:Team,match_data,event_data,team_color="#1f77b4"):
     title = f"starting XI" 
@@ -309,32 +288,43 @@ def plot_momentum_chart_plotly(
 
     return fig
 
-def plot_team_pitch_third(events: pd.DataFrame,match_data:TrackingDataset,
-                                 team:Team,
-                                 team_color: str = "#0F12D6",
-                                 attacking_direction: str = "left_to_right"
-                                 ,type="offensive"):
+def plot_team_pitch_third(events: pd.DataFrame,
+                          match_data,
+                          team,
+                          team_color: str = "#0F12D6",
+                          attacking_direction: str = "left_to_right",
+                          type_="offensive",period=1):
     """
     Plot a single SkillCorner-style pitch (centered at 0,0) showing the % of passes+shots per third.
+    Adds an arrow showing attacking direction.
     Returns a matplotlib figure for Streamlit.
     """
-    pitch_length=match_data.metadata.coordinate_system.pitch_length
-    pitch_width=match_data.metadata.coordinate_system.pitch_width
+    pitch_length = match_data.metadata.coordinate_system.pitch_length
+    pitch_width = match_data.metadata.coordinate_system.pitch_width
     third = pitch_length / 3
     
     # Filter events for this team
-    if type == "offensive":
-        events = events[((events['end_type'].isin(['pass','shot'])) | (events["event_subtype"].isin([
-                    "coming_short", "run_ahead_of_the_ball", "behind", "dropping_off", "pulling_wide",
-                    "pulling_half_space", "overlap", "underlap", "support", "cross_receiver"
-                ])))].copy()
-    else:
-        events = events[(events["event_subtype"].isin(["pressing","presure","recovery_press"
-                    "indirect_disruption", "indirect_regain", "direct_regain", "direct_disruption",
-                    "possession_loss", "foul_committed", "clearance"
-                ]))].copy()
+    if type_ == "offensive":
+        events = events[(((events['end_type'].isin(['pass','shot'])) | 
+                        (events["event_subtype"].isin([
+                            "coming_short", "run_ahead_of_the_ball", "behind", "dropping_off", "pulling_wide",
+                            "pulling_half_space", "overlap", "underlap", "support", "cross_receiver"
+                        ]))))&(events["period"].astype(int) == int(period))].copy()
+    elif type_ == "defensive":
+        events = events[(events["event_subtype"].isin([
+            "pressing","presure","recovery_press","indirect_disruption","indirect_regain",
+            "direct_regain","direct_disruption","possession_loss","foul_committed","clearance"
+        ]))&(events["period"].astype(int) == int(period))].copy()
         
-    attacking_direction= "left_to_right" if team.ground == "home" else "right_to_left"  
+    if (team.ground.name == "AWAY")&(period==1):
+        attacking_direction = "left_to_right" 
+    elif (team.ground.name == "AWAY")&(period==2):
+        attacking_direction = "right_to_left"
+    elif (team.ground.name == "HOME")&(period==1):
+        attacking_direction = "right_to_left"
+    elif (team.ground.name == "HOME")&(period==2):
+        attacking_direction = "left_to_right"
+
     team_events = events[events['team_id'] == team.team_id]
     
     # Convert centered coordinates to 0 → pitch_length for calculation
@@ -361,13 +351,14 @@ def plot_team_pitch_third(events: pd.DataFrame,match_data:TrackingDataset,
     
     # Map percentages to alpha
     min_alpha, max_alpha = 0.1, 0.5
-    max_val = max(percentages.values()) if len(percentages)>0 else 0
-    alphas = {k: min_alpha + (v/max_val)*(max_alpha - min_alpha) if max_val>0 else min_alpha
+    max_val = max(percentages.values()) if len(percentages) > 0 else 0
+    alphas = {k: min_alpha + (v/max_val)*(max_alpha - min_alpha) if max_val > 0 else min_alpha
               for k,v in percentages.items()}
     
     # Draw pitch
     fig, ax = plt.subplots(figsize=(7,6))
-    pitch = Pitch(pitch_type='skillcorner', pitch_length=pitch_length, pitch_width=pitch_width, pitch_color='white', line_color='gray', positional=False)
+    pitch = Pitch(pitch_type='skillcorner', pitch_length=pitch_length, pitch_width=pitch_width, 
+                  pitch_color='white', line_color='gray', positional=False)
     pitch.draw(ax=ax)
     
     # Draw thirds
@@ -394,16 +385,59 @@ def plot_team_pitch_third(events: pd.DataFrame,match_data:TrackingDataset,
     
     # X-axis labels
     xtick_positions = [-pitch_length/2 + third/2, 0, pitch_length/2 - third/2]
-    xtick_labels = ["Defensive","Midfield","Attacking"] if  attacking_direction == "left_to_right" else ["Attacking","Midfield","Defensive"]
+    xtick_labels = ["Defensive","Midfield","Attacking"] if attacking_direction == "left_to_right" else ["Attacking","Midfield","Defensive"]
     ax.set_xticks(xtick_positions)
     ax.set_xticklabels(xtick_labels, fontsize=12, weight='bold')
     ax.tick_params(axis='x', length=5)
     ax.set_yticks([])
-    title = f"{team.name} Third (Passes + Shots)"if type == "offensive" else f"{team.name} Third defensive behavior"
-    ax.set_title(title, fontsize=18,weight='bold')
-    plt.tight_layout()
     
+    # Title
+    periods=  {1:"first",2:"second"}
+    title = f"Attacking behavior {periods[period]} half" if type_ == "offensive" else f"Defensive behavior {periods[period]} half"
+    ax.set_title(title, fontsize=24,weight='bold')
+    
+    # ---- Attacking direction arrow ----
+    arrow_y = arrow_y = pitch_width / 2 - 6
+    arrow_length = pitch_length * 0.20
+
+    if attacking_direction == "left_to_right":
+        start_x, end_x = -arrow_length/2, arrow_length/2
+    else:
+        start_x, end_x = arrow_length/2, -arrow_length/2
+
+    ax.annotate(
+        "",
+        xy=(end_x, arrow_y),
+        xytext=(start_x, arrow_y),
+        arrowprops=dict(arrowstyle="->", color="black", lw=5),
+        zorder=5
+    )
+
+    plt.tight_layout()
     return fig
+
+def get_players_of(data:TrackingDataset,target_team:Team,frame_number:int):
+    player_list = []
+    for player in data.frames[frame_number].players_coordinates.keys():
+        if str(player.team.name) == str(target_team.name):
+            player_list.append(player)
+    return player_list
+
+def fetch_player_data(event_data:pd.DataFrame,list_players:List):
+    players_coordinates = {
+        "id":[],
+        "jersey_no":[],
+        "name":[],
+        "position":[]
+    }
+
+    for player in list_players:
+        players_coordinates["jersey_no"].append(player.jersey_no)
+        players_coordinates["name"].append(get_player_name_from_event(player.player_id,event_data))
+        players_coordinates["id"].append(player.player_id)
+        players_coordinates["position"].append(get_position(player.player_id,event_data))
+    return players_coordinates
+
 POSITION_COORDS_H = {
 
 # =================================================

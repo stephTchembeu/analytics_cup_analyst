@@ -2,7 +2,6 @@ from typing import List, Optional, Tuple
 import pandas as pd
 from src.utils.preset import (
     covered_distance,
-    expected_goals,
     expected_threat,
     get_players_name,
     max_speed,
@@ -11,6 +10,80 @@ from src.utils.preset import (
     sub_title,
 )
 import streamlit as st
+
+def player_clearance(player_id,event_data) -> int:
+    """Counts clearance events for a plaer.
+
+    Args:
+        player_id: int representing the player id.
+        event_data: the event data
+    Returns:
+        int: Number of clearances made by the player.
+    """
+    try:
+        required_cols = ['end_type', 'player_id']
+        missing_cols = [col for col in required_cols if col not in event_data.columns]
+        if missing_cols:
+            raise KeyError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+        clearances_df = event_data[event_data["end_type"].str.lower() == "clearance"]
+        player_clearances = clearances_df[clearances_df["player_id"] == player_id]
+        result = len(player_clearances)
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        st.warning(f"Error calculating clearances: {str(e)}")
+        result = 0
+    else:
+        return result
+    
+    return result
+
+def press(
+    player_id,
+    type_press,
+    event_data,
+    match_data
+):
+    """
+    Count pressing events in offensive or defensive third
+    using SkillCorner coordinate system.
+    Direction is evaluated per event.
+    """
+    pressure_event_type = [
+        "pressing",
+        "presure",  # keep only if present in raw data
+        "recovery_press",
+        "indirect_regain",
+        "direct_regain",
+        "counter_press"
+    ]
+
+    df = event_data[
+        event_data["event_subtype"].isin(pressure_event_type) &
+        (event_data["player_id"].astype(int) == int(player_id))
+    ]
+
+    L = match_data.metadata.coordinate_system.pitch_length
+    third_limit = L / 6
+
+    x = df["x_start"]
+    direction = df["attacking_side"] 
+
+    if type_press == "offensive":
+        mask = (
+            ((direction == "left_to_right") & (x >= third_limit)) |
+            ((direction == "right_to_left") & (x <= -third_limit))
+        )
+        return mask.sum()
+
+    elif type_press == "defensive":
+        mask = (
+            ((direction == "left_to_right") & (x <= -third_limit)) |
+            ((direction == "right_to_left") & (x >= third_limit))
+        )
+        return mask.sum()
+
+    return 0
+
 
 
 def player_info(index: int, home, away, match_data) -> Optional[object]:
@@ -68,10 +141,12 @@ def get_comparison_data(player1, player2, match_data) -> pd.DataFrame:
         "Distance Covered (km)",
         "Max Speed (m/s)",
         "Total Passes",
-        "Expected Goals (xG)",
         "Expected Threat (xT)",
         "Shots on Target",
         "Shots Total",
+        "clearance",
+        "offensive press",
+        "deffensive press",
     ]
     player1_data = get_player_data(player1, st.session_state.event_data, match_data)
     player2_data = get_player_data(player2, st.session_state.event_data, match_data)
@@ -107,10 +182,12 @@ def get_player_data(player, event_data: pd.DataFrame, match_data) -> List[float]
                 & (event_data["player_id"] == int(player.player_id))
             ]
         ),
-        expected_goals(player, match_data),
-        expected_threat(player, match_data),
+        expected_threat(player),
         shots_on_target(player, match_data),
         shots_(player.player_id),
+        player_clearance(player.player_id,event_data),
+        press(player.player_id,"offensive",event_data,match_data),
+        press(player.player_id,"defensive",event_data,match_data),
     ]
     return data
 

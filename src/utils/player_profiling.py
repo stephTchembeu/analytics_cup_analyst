@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -26,7 +26,6 @@ def select_team(home: Team, away: Team) -> Team:
     )
     team = home if selected_team_name == home.name else away
     return team
-
 
 def get_player(players: List[str], team: Team) -> Player:
     """
@@ -57,7 +56,6 @@ def get_player(players: List[str], team: Team) -> Player:
     ][0]
     return selected_player
 
-
 def get_players_name_(team_name: str, match_data: TrackingDataset) -> Dict[str, List]:
     """
     Retrieve all player names and IDs for a specific team from match data.
@@ -79,7 +77,6 @@ def get_players_name_(team_name: str, match_data: TrackingDataset) -> Dict[str, 
                 "ids": [player.player_id for player in team.players],
             }
     return {}
-
 
 def get_position(player_id: int | str, event_data: pd.DataFrame) -> str:
     """
@@ -139,8 +136,6 @@ def get_player_name_from_event(player_id: int | str, event_data: pd.DataFrame) -
 
     return positions.iloc[0]
 
-
-
 def add_position(
     players_name: List[str], players_id: List[int | str], event_data: pd.DataFrame
 ) -> List[str]:
@@ -163,7 +158,6 @@ def add_position(
         position = get_position(pid, event_data)
         result.append(f"{name} {position}")
     return result
-
 
 def show_player_name_pos(player: Player, event_data: pd.DataFrame) -> None:
     """
@@ -190,7 +184,6 @@ def show_player_name_pos(player: Player, event_data: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
 
-
 def get_events(
     target_player: Player, event_type: str, event_data: pd.DataFrame
 ) -> pd.DataFrame:
@@ -213,147 +206,149 @@ def get_events(
     ]
     return events
 
-
 def plot_retention(player_events: pd.DataFrame, player_name: str) -> None:
     """
-    Create and display a bar chart of ball retention durations for a player.
-
-    Visualizes ball retention events with individual durations and a mean line.
-    Events with duration > 0 are plotted with event IDs on x-axis and duration
-    on y-axis.
+    Create and display a bar chart of average ball retention durations per match minute.
 
     Args:
         player_events: DataFrame containing all events for the player with columns:
-                      'event_id', 'duration', 'end_type'
+                      'event_id', 'duration', 'end_type', 'minute_start'
         player_name: Full name of the player for chart title
 
     Returns:
         None: Displays the chart directly in Streamlit
     """
-    retention_events = player_events[player_events["duration"] > 0]
-    durations = retention_events[["event_id", "duration", "end_type"]].reset_index(
-        drop=True
-    )
-    mean_retention = durations["duration"].mean()
+    # Keep only events with duration > 0
+    retention_events = player_events[player_events["duration"] > 0].copy()
 
+    # Aggregate by minute_start
+    retention_minute = (
+        retention_events.groupby("minute_start")["duration"]
+        .mean()
+        .reset_index()
+    )
+
+    # Overall mean
+    mean_retention = retention_events["duration"].mean() if len(retention_events) > 0 else 0
+
+    # Plot
     fig = px.bar(
-        x=durations["event_id"],
-        y=durations["duration"],
-        labels={"x": "Event Id", "y": "Ball duration (s)"},
-        title=f"Ball Retention for {player_name}",
-        color_discrete_sequence=["#0e8d34"],
-        custom_data=[durations["end_type"]],
+        retention_minute,
+        x="minute_start",
+        y="duration",
+        labels={"minute_start": "Match Minute", "duration": "Avg Ball Retention (s)"},
+        title=f"Ball Retention per Minute for {player_name}",
+        color_discrete_sequence=["#0e8d34"]
     )
-    fig.update_traces(
-        hovertemplate="Event Id: %{x}<br>Ball duration (s): %{y}<br>Event type: %{customdata[0]}<extra></extra>"
-    )
+
+    # Mean line
     fig.add_trace(
         go.Scatter(
-            x=durations["event_id"],
-            y=[mean_retention] * len(durations),
+            x=retention_minute["minute_start"],
+            y=[mean_retention] * len(retention_minute),
             mode="lines",
             line=dict(color="red", dash="dash"),
-            name=f"Mean: {mean_retention:.2f}s",
-            hovertemplate="Mean: %{y:.2f}s<extra></extra>",
+            name=f"Overall Mean: {mean_retention:.2f}s",
+            hovertemplate="Mean: %{y:.2f}s<extra></extra>"
         )
     )
-    fig.update_layout(showlegend=True)
+
     st.plotly_chart(fig, use_container_width=True)
-
-
+ 
 def plot_offensive_action(offensive_events: pd.DataFrame, player_name: str) -> None:
     """
-    Create and display a bar chart of offensive action durations for a player.
-
-    Visualizes offensive actions with their durations and event subtypes,
-    including a mean duration line.
+    Create and display a bar chart of average offensive action durations per match minute.
 
     Args:
         offensive_events: DataFrame containing offensive events with columns:
-                         'event_id', 'event_subtype', 'duration', 'end_type'
+                          'event_id', 'event_subtype', 'duration', 'end_type', 'minute_start'
         player_name: Full name of the player for chart title
 
     Returns:
         None: Displays the chart directly in Streamlit
     """
-    offensive_df = offensive_events[
-        ["event_id", "event_subtype", "duration", "end_type"]
-    ].reset_index(drop=True)
-    mean_offensive = (
-        offensive_df["duration"].mean() if "duration" in offensive_df else 0
+    # Keep only events with duration > 0
+    offensive_events = offensive_events[offensive_events["duration"] > 0].copy()
+
+    # Aggregate by minute
+    offensive_minute = (
+        offensive_events.groupby("minute_start")["duration"]
+        .mean()
+        .reset_index()
     )
 
-    fig2 = px.bar(
-        x=offensive_df["event_id"],
-        y=offensive_df["duration"]
-        if "duration" in offensive_df
-        else [0] * len(offensive_df),
-        labels={"x": "Event Id", "y": "Duration (s)"},
-        title=f"Offensive Actions for {player_name}",
-        color_discrete_sequence=["#217c23"],
-        custom_data=[offensive_df["event_subtype"], offensive_df["end_type"]],
+    # Overall mean
+    mean_offensive = offensive_events["duration"].mean() if len(offensive_events) > 0 else 0
+
+    # Plot
+    fig = px.bar(
+        offensive_minute,
+        x="minute_start",
+        y="duration",
+        labels={"minute_start": "Match Minute", "duration": "Avg Offensive Duration (s)"},
+        title=f"Offensive Actions per Minute for {player_name}",
+        color_discrete_sequence=["#217c23"]
     )
-    fig2.update_traces(
-        hovertemplate="Event Id: %{x}<br>Duration (s): %{y}<br>Subtype: %{customdata[0]}<br>Event type: %{customdata[1]}<extra></extra>"
-    )
-    fig2.add_trace(
+
+    # Mean line
+    fig.add_trace(
         go.Scatter(
-            x=offensive_df["event_id"],
-            y=[mean_offensive] * len(offensive_df),
+            x=offensive_minute["minute_start"],
+            y=[mean_offensive] * len(offensive_minute),
             mode="lines",
             line=dict(color="red", dash="dash"),
-            name=f"Mean: {mean_offensive:.2f}s",
-            hovertemplate="Mean: %{y:.2f}s<extra></extra>",
+            name=f"Overall Mean: {mean_offensive:.2f}s",
+            hovertemplate="Mean: %{y:.2f}s<extra></extra>"
         )
     )
-    fig2.update_layout(showlegend=True)
-    st.plotly_chart(fig2, use_container_width=True)
 
+    st.plotly_chart(fig, use_container_width=True)
 
 def plot_defensive_action(defensive_events: pd.DataFrame, player_name: str) -> None:
     """
-    Create and display a bar chart of defensive action durations for a player.
-
-    Visualizes defensive actions with their durations, end types, and subtypes,
-    including a mean duration line.
+    Create and display a bar chart of average defensive action durations per match minute.
 
     Args:
         defensive_events: DataFrame containing defensive events with columns:
-                         'event_id', 'end_type', 'duration', 'event_subtype'
+                          'event_id', 'end_type', 'duration', 'event_subtype', 'minute_start'
         player_name: Full name of the player for chart title
 
     Returns:
         None: Displays the chart directly in Streamlit
     """
-    defensive_df = defensive_events[
-        ["event_id", "end_type", "duration", "event_subtype"]
-    ].reset_index(drop=True)
-    mean_defensive = (
-        defensive_df["duration"].mean() if "duration" in defensive_df else 0
+    # Keep only events with duration > 0
+    defensive_events = defensive_events[defensive_events["duration"] > 0].copy()
+
+    # Aggregate by minute
+    defensive_minute = (
+        defensive_events.groupby("minute_start")["duration"]
+        .mean()
+        .reset_index()
     )
 
-    fig3 = px.bar(
-        x=defensive_df["event_id"],
-        y=defensive_df["duration"]
-        if "duration" in defensive_df
-        else [0] * len(defensive_df),
-        labels={"x": "Event Id", "y": "Duration (s)"},
-        title=f"Defensive Actions for {player_name}",
-        color_discrete_sequence=["#052B72"],
-        custom_data=[defensive_df["end_type"], defensive_df["event_subtype"]],
+    # Overall mean
+    mean_defensive = defensive_events["duration"].mean() if len(defensive_events) > 0 else 0
+
+    # Plot
+    fig = px.bar(
+        defensive_minute,
+        x="minute_start",
+        y="duration",
+        labels={"minute_start": "Match Minute", "duration": "Avg Defensive Duration (s)"},
+        title=f"Defensive Actions per Minute for {player_name}",
+        color_discrete_sequence=["#052B72"]
     )
-    fig3.update_traces(
-        hovertemplate="Event Id: %{x}<br>Duration (s): %{y}<br>Event type: %{customdata[0]}<br>Subtype: %{customdata[1]}<extra></extra>"
-    )
-    fig3.add_trace(
+
+    # Mean line
+    fig.add_trace(
         go.Scatter(
-            x=defensive_df["event_id"],
-            y=[mean_defensive] * len(defensive_df),
+            x=defensive_minute["minute_start"],
+            y=[mean_defensive] * len(defensive_minute),
             mode="lines",
             line=dict(color="red", dash="dash"),
-            name=f"Mean: {mean_defensive:.2f}s",
-            hovertemplate="Mean: %{y:.2f}s<extra></extra>",
+            name=f"Overall Mean: {mean_defensive:.2f}s",
+            hovertemplate="Mean: %{y:.2f}s<extra></extra>"
         )
     )
-    fig3.update_layout(showlegend=True)
-    st.plotly_chart(fig3, use_container_width=True)
+
+    st.plotly_chart(fig, use_container_width=True)

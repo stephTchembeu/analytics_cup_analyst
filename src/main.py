@@ -175,24 +175,43 @@ with tabs[0]:
 
         # HOME COLUMN
         with stats_home:
-            home_attacking_third = plot_team_pitch_third(
+            home_attacking_third1 = plot_team_pitch_third(
                 st.session_state.event_data,
                 match_data,
                 home,
                 home_color,
-                "left_to_right",
-                "offensive",
+                type_="offensive",
             )
-            home_defensive_third = plot_team_pitch_third(
+            home_defensive_third1 = plot_team_pitch_third(
                 st.session_state.event_data,
                 match_data,
                 home,
                 home_color,
-                "left_to_right",
-                "defensive",
+                type_="defensive",
             )
-            st.pyplot(home_attacking_third)
-            st.pyplot(home_defensive_third)
+            home_attacking_third2 = plot_team_pitch_third(
+                st.session_state.event_data,
+                match_data,
+                home,
+                home_color,
+                type_="offensive",
+                period=2
+            )
+            home_defensive_third2 = plot_team_pitch_third(
+                st.session_state.event_data,
+                match_data,
+                home,
+                home_color,
+                type_="defensive",
+                period = 2
+            )
+            _1,_2 = st.columns([.5,.5])
+            with _1:
+                st.pyplot(home_attacking_third1)
+                st.pyplot(home_defensive_third1)
+            with _2:
+                st.pyplot(home_attacking_third2)
+                st.pyplot(home_defensive_third2)
             show_formation(
                 home,
                 match_data=match_data,
@@ -216,42 +235,61 @@ with tabs[0]:
             with home_stats_:
                 for _, val in home_stats.items():
                     st.markdown(
-                        f"<p style='text-align:left; font-weight:800; margin:8px 0; font-size:22px;'>{val}</p>",
+                        f"<p style='text-align:left; font-weight:800; margin:8px 0; font-size:19px;'>{val}</p>",
                         unsafe_allow_html=True,
                     )
             with labels_stats_:
                 for label in STATS_LABELS:
                     st.markdown(
-                        f"<p style='text-align:center; color:gray; margin:8px 0; font-size:22px;'>{label}</p>",
+                        f"<p style='text-align:center; color:gray; margin:8px 0; font-size:19px;'>{label}</p>",
                         unsafe_allow_html=True,
                     )
             with away_stats_:
                 for _, val in away_stats.items():
                     st.markdown(
-                        f"<p style='text-align:right; font-weight:800; margin:8px 0; font-size:22px;'>{val}</p>",
+                        f"<p style='text-align:right; font-weight:800; margin:8px 0; font-size:19px;'>{val}</p>",
                         unsafe_allow_html=True,
                     )
 
         # AWAY COLUMN
         with stats_away:
-            away_attacking_third = plot_team_pitch_third(
+            away_attacking_third1 = plot_team_pitch_third(
                 st.session_state.event_data,
                 match_data,
                 away,
                 away_color,
-                "right_to_left",
-                "offensive",
+                type_="offensive",
             )
-            away_defensive_third = plot_team_pitch_third(
+            away_attacking_third2 = plot_team_pitch_third(
                 st.session_state.event_data,
                 match_data,
                 away,
                 away_color,
-                "right_to_left",
-                "defensive",
+                type_="offensive",
+                period=2
             )
-            st.pyplot(away_attacking_third)
-            st.pyplot(away_defensive_third)
+            away_defensive_third1 = plot_team_pitch_third(
+                st.session_state.event_data,
+                match_data,
+                away,
+                away_color,
+                type_="defensive",
+            )
+            away_defensive_third2 = plot_team_pitch_third(
+                st.session_state.event_data,
+                match_data,
+                away,
+                away_color,
+                type_="defensive",
+                period=2
+            )
+            _1,_2 = st.columns([.5,.5])
+            with _1:
+                st.pyplot(away_attacking_third1)
+                st.pyplot(away_defensive_third1)
+            with _2: 
+                st.pyplot(away_attacking_third2)
+                st.pyplot(away_defensive_third2)
             show_formation(
                 away,
                 match_data=match_data,
@@ -269,7 +307,6 @@ with tabs[1]:
     **Planned Features:**
     - Team possession zones heatmap
     - Dominant areas visualization
-    - Territorial control metrics
     """
     )
 
@@ -281,7 +318,6 @@ with tabs[2]:
         """
     **Planned Features:**
     - Defensive line positioning
-    - Compactness metrics
     - Pressing intensity zones
     """
     )
