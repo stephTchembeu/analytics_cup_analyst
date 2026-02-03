@@ -163,10 +163,8 @@ analytics_cup_analyst/
 ### Dashboard Tabs
 
 1. **Team Stats**: High-level team metrics including shots, passes, possession, and defensive actions
-2. **Pitch Control**: Interactive visualization of team dominance and space control across the pitch
-3. **Defensive Shape**: Tactical analysis of defensive formations, positioning, and pressing patterns
-4. **Player Profiling**: Individual player performance with radar charts, heatmaps, and spatial pass maps
-5. **Player Performance Comparison**: Side-by-side comparison of multiple players with key performance indicators
+2. **Player Profiling**: Individual player performance with radar charts, heatmaps, and spatial pass maps
+3. **Player Performance Comparison**: Side-by-side comparison of multiple players with key performance indicators
 
 ### Selecting a Match
 
