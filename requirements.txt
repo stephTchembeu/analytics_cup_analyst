@@ -7,4 +7,4 @@ kloppy
 pytest>=7.0.0
 matplotlib
 plotly
-mplsoccer>=1.2.0
+mplsoccer>=1.5.0
