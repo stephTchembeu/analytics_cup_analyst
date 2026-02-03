@@ -138,11 +138,11 @@ def render_team_logo(
     <div style="text-align: center;">
         <img 
             src="data:image/png;base64,{encoded}" 
-            style="width: {width}px; display: block; margin: auto;"
+            style="width: {width}px; height: {width}px; object-fit: contain; display: block; margin: auto;"
         />
         <p style="
             font-size: 0.95rem;
-            font_weight:"bold";
+            font-weight: bold;
             margin-top: 0.5rem;
             line-height: 1.1;
             word-wrap: break-word;
@@ -1433,8 +1433,6 @@ AVAILABLE_MATCHES_IDS = ['1953632',
 LOGO_OPTIONS = (SIMPLE_LOGO, LOGO_WITH_TEXT)
 TAB_NAMES = (
     "Team Stats",
-    # "Pitch Control",
-    # "Defensive Shape",
     "Player Profiling",
     "Player Performance",
 )

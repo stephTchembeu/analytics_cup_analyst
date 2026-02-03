@@ -32,13 +32,34 @@ FootMetricX is an interactive analytics platform designed for coaches, analysts,
 - **Frontend**: Streamlit 1.28.1+ - Interactive web framework
 - **Data Processing**: Pandas, NumPy - Data manipulation and analysis
 - **Sports Analytics**:
-  - Kloppy 0.9.0 - SkillCorner data loader and event processor
+  - Kloppy 0.9.0+ - SkillCorner data loader and event processor
   - mplsoccer - Pitch visualization
-- **Visualization**: Plotly, Matplotlib, Mplsoccer
-- **API Integration**: Requests - GitHub raw data retrieval
+- **Visualization**: Plotly, Matplotlib, mplsoccer
+- **API Integration**: Requests, BeautifulSoup - GitHub and Wikipedia data retrieval
 - **Testing**: Pytest 7.0.0+ - Unit and integration testing
 
 ---
+
+## Recent Improvements
+
+### Code Quality & Maintainability
+
+- Removed ~370 lines of unused team-level stat functions from `preset.py`
+- Consolidated analytics functions to eliminate code duplication
+- Improved code organization for better maintainability
+
+### Bug Fixes & Stability
+
+- Fixed KeyError in player tracking data validation (covered_distance function)
+- Fixed ValueError in heatmap contour level plotting for players with few passes
+- Added defensive checks for empty DataFrames when accessing player team_id
+- Improved error handling and data validation throughout
+
+### UI/UX Enhancements
+
+- Team logos now display with consistent square aspect ratio (equal width/height)
+- Enhanced CSS styling with `object-fit: contain` for better logo presentation
+- Improved visual consistency across dashboard tabs
 
 ## Installation
 
@@ -118,71 +139,92 @@ streamlit run src/main.py --logger.level=debug
 ```
 analytics_cup_analyst/
 ├── src/
-│   ├── main.py                 # Main Streamlit application entry point
-│   ├── __init__.py
-│   ├── utils/
-│   │   ├── preset.py           # Core analytics functions and UI setup
-│   │   ├── logo_loader.py      # Team logo fetching from Wikipedia
-│   │   ├── pitch_control.py    # Advanced pitch control calculations
-│   │   └── __init__.py
+│   ├── main.py                    # Streamlit app entry point (5 tabs)
+│   ├── images/                    # Team logos & assets
 │   ├── data/
-│   │   ├── test.ipynb          # Development notebook for testing
-│   │   └── 1886347_dynamic_events.csv  # Sample event data
-│   └── images/                 # Logo and branding assets
+│   │   ├── {match_id}_dynamic_events.csv  # Event data cache
+│   │   └── test.ipynb             # Testing notebook
+│   └── utils/
+│       ├── preset.py              # Core analytics & visualization functions (~1000 lines)
+│       ├── logo_loader.py         # Team logo management via Wikipedia API
+│       ├── player_profiling.py    # Player radar charts and heatmaps
+│       ├── player_performance.py  # Player comparison metrics
+│       └── team_stats.py          # Team-level statistics
 ├── tests/
-│   ├── __init__.py
-│   ├── conftest.py            # Pytest fixtures and mock data factories
-│   ├── test_preset.py         # Unit tests for analytics functions
-│   ├── test_pitch_control.py  # Tests for pitch control module
-│   └── runner.py              # Test execution utility
-├── .github/
-│   └── copilot-instructions.md # AI agent guidelines
-├── requirements.txt            # Python package dependencies
-├── README.md                   # This file
-└── LICENSE
+│   ├── runner.py                  # Test runner
+│   ├── conftest.py                # Pytest fixtures
+│   └── test_preset.py             # Unit tests
+├── requirements.txt               # Dependencies
+├── LICENSE                        # MIT License
+└── README.md
 ```
 
 ---
 
 ## Usage Guide
 
+### Dashboard Tabs
+
+1. **Team Stats**: High-level team metrics including shots, passes, possession, and defensive actions
+2. **Pitch Control**: Interactive visualization of team dominance and space control across the pitch
+3. **Defensive Shape**: Tactical analysis of defensive formations, positioning, and pressing patterns
+4. **Player Profiling**: Individual player performance with radar charts, heatmaps, and spatial pass maps
+5. **Player Performance Comparison**: Side-by-side comparison of multiple players with key performance indicators
+
 ### Selecting a Match
 
-1. Open the dashboard in your browser
+1. Open the dashboard in your browser at `http://localhost:8501`
 2. Use the sidebar dropdown to select an available match
-3. Watch the status messages as the app loads:
-   - Success message if all matches load
-   - Warning message if some matches fail (app continues with available)
-4. Select tabs to explore different analytics views
+3. The app automatically loads:
+   - Match metadata from SkillCorner via Kloppy
+   - Event data from GitHub raw content
+   - Tracking data for space control and heatmap analysis
+4. Explore different tabs to analyze team and player performance
 
----
+### Player Analysis Features
+
+- **Heatmaps**: Visualize player positioning density across the pitch
+- **Pass Maps**: Display all passes from a player with successful/unsuccessful pass indicators
+- **Covered Distance**: Track total distance covered during the match
+- **Radar Charts**: Compare multiple performance metrics in a single view
+- **Performance Metrics**: Goals, assists, pass accuracy, pressures, and more
 
 ## Data Sources
 
 ### SkillCorner API
 
-The application leverages SkillCorner's open released data:
+The application leverages SkillCorner's open-source released data:
 
-- Match metadata and tracking data via `kloppy.skillcorner.load_open_data()`
+- **Match Metadata & Tracking Data**: Via `kloppy.skillcorner.load_open_data()`
+- **Tracking Coordinates**: SkillCorner format with automatic coordinate system handling
+- **Player Positions**: Frame-by-frame tracking data for heatmaps and pitch control analysis
 
-### SkillCorner's event data raw content
+### Event Data
 
-Event data is loaded into pd.DataFrame from:
+Event data is loaded from GitHub's raw content repository:
 
 ```
 https://raw.githubusercontent.com/SkillCorner/opendata/master/data/matches/{game_id}/{game_id}_dynamic_events.csv
 ```
 
+Data includes: passes, shots, fouls, clearances, pressures, and other game events.
+
+### Team Logos
+
+Team logos are fetched from Wikipedia API with fallback to local assets:
+
+- Primary: Wikipedia search for official team logos
+- Fallback: Local image files in `src/images/`
+- Graceful degradation if logo unavailable
+
 ### Available Matches
 
-Configured in `src/utils/preset.py`:
+Match IDs are configured in `src/utils/preset.py`:
 
-- `AVAILABLE_MATCHES_IDS`: List of match IDs loaded at startup
+- `AVAILABLE_MATCHES_IDS`: List of match IDs pre-loaded at startup
 - Graceful error handling if a match fails to load
-- App continues with all successfully loaded matches
-
-
----
+- Dashboard continues with all successfully loaded matches
+- User can select from dropdown to switch between matches
 
 ## License
 
@@ -199,4 +241,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **mplsoccer**: For football pitch visualization.
 
 ---
-
