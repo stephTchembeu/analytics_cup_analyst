@@ -53,25 +53,25 @@ from utils.preset import (
 from utils.player_performance import *
 
 
-# # Run tests on startup
-# if "tests_validated" not in st.session_state:
-#     try:
-#         from tests.runner import run_tests, validate_imports
+# Run tests on startup
+if "tests_validated" not in st.session_state:
+    try:
+        from tests.runner import run_tests, validate_imports
 
-#         # Validate imports first
-#         imports_ok, import_msg = validate_imports()
-#         if not imports_ok:
-#             st.warning(f"Import validation: {import_msg}")
+        # Validate imports first
+        imports_ok, import_msg = validate_imports()
+        if not imports_ok:
+            st.warning(f"Import validation: {import_msg}")
 
-#         # Run test suite
-#         tests_ok, test_output = run_tests()
-#         if not tests_ok and test_output.strip():
-#             st.warning(f"Some tests failed:\n```\n{test_output}\n```")
+        # Run test suite
+        tests_ok, test_output = run_tests()
+        if not tests_ok and test_output.strip():
+            st.warning(f"Some tests failed:\n```\n{test_output}\n```")
 
-#         st.session_state.tests_validated = True
-#     except Exception as e:
-#         st.warning(f"Test runner error: {str(e)}")
-#         st.session_state.tests_validated = True
+        st.session_state.tests_validated = True
+    except Exception as e:
+        st.warning(f"Test runner error: {str(e)}")
+        st.session_state.tests_validated = True
 
 # define decorative elements
 preset_app()
@@ -286,33 +286,7 @@ with tabs[0]:
                 team_color=away_color,
             )
 
-
-# # Tab 1: Pitch Control (Placeholder)
-# with tabs[1]:
-#     st.header("Pitch Control Analysis")
-#     st.info("This feature is under development. Coming soon!")
-#     st.markdown(
-#         """
-#     **Planned Features:**
-#     - Team possession zones heatmap
-#     - Dominant areas visualization
-#     """
-#     )
-
-# # Tab 2: Defensive Shape (Placeholder)
-# with tabs[2]:
-#     st.header("Defensive Shape Analysis")
-#     st.info("This feature is under development. Coming soon!")
-#     st.markdown(
-#         """
-#     **Planned Features:**
-#     - Defensive line positioning
-#     - Pressing intensity zones
-#     """
-#     )
-
-
-# Tab 3: Player Profiling
+# Tab 1: Player Profiling
 with tabs[1]:
     if match_available():
         selected_team = select_team(home, away)
@@ -468,7 +442,7 @@ with tabs[1]:
     else:
         st.warning("None Match have been seleected")
 
-# Tab 4: Player Performance (Comparison)
+# Tab 2: Player Performance (Comparison)
 with tabs[2]:
     title()
     if match_available():
@@ -512,4 +486,3 @@ with tabs[2]:
         st.info(
             "Please select a match from the sidebar to view player performance comparisons."
         )
-# I will come back into this only for amelioration.
