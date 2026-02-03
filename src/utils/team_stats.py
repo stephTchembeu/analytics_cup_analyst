@@ -1,7 +1,11 @@
 from typing import List
 from utils.player_profiling import get_position,get_player_name_from_event
 import streamlit as st
+import mplsoccer
+print(mplsoccer.__version__)
+
 from mplsoccer.pitch import VerticalPitch
+
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -11,7 +15,6 @@ from collections import defaultdict
 from mplsoccer import Pitch
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
 
 
 
