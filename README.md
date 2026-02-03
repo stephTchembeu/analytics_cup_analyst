@@ -141,9 +141,6 @@ analytics_cup_analyst/
 ├── src/
 │   ├── main.py                    # Streamlit app entry point (5 tabs)
 │   ├── images/                    # Team logos & assets
-│   ├── data/
-│   │   ├── {match_id}_dynamic_events.csv  # Event data cache
-│   │   └── test.ipynb             # Testing notebook
 │   └── utils/
 │       ├── preset.py              # Core analytics & visualization functions (~1000 lines)
 │       ├── logo_loader.py         # Team logo management via Wikipedia API
