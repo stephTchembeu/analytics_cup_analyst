@@ -1433,8 +1433,8 @@ AVAILABLE_MATCHES_IDS = ['1953632',
 LOGO_OPTIONS = (SIMPLE_LOGO, LOGO_WITH_TEXT)
 TAB_NAMES = (
     "Team Stats",
-    "Pitch Control",
-    "Defensive Shape",
+    # "Pitch Control",
+    # "Defensive Shape",
     "Player Profiling",
     "Player Performance",
 )

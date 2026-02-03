@@ -17,9 +17,6 @@ from utils.player_profiling import (
 )
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
 
 from kloppy import skillcorner
 from pathlib import Path
@@ -41,7 +38,6 @@ from utils.preset import (
     covered_distance,
     max_speed,
     shots_on_target,
-    expected_threat,
     match_available,
     title,
     sub_title,
@@ -56,33 +52,26 @@ from utils.preset import (
 
 from utils.player_performance import *
 
-from utils.pitch_control import (
-    calculate_pitch_control,
-    calculate_space_control_metrics,
-    get_frame_positions,
-    plot_pitch_control,
-    plot_space_creation_impact,
-)
 
-# Run tests on startup
-if "tests_validated" not in st.session_state:
-    try:
-        from tests.runner import run_tests, validate_imports
+# # Run tests on startup
+# if "tests_validated" not in st.session_state:
+#     try:
+#         from tests.runner import run_tests, validate_imports
 
-        # Validate imports first
-        imports_ok, import_msg = validate_imports()
-        if not imports_ok:
-            st.warning(f"Import validation: {import_msg}")
+#         # Validate imports first
+#         imports_ok, import_msg = validate_imports()
+#         if not imports_ok:
+#             st.warning(f"Import validation: {import_msg}")
 
-        # Run test suite
-        tests_ok, test_output = run_tests()
-        if not tests_ok and test_output.strip():
-            st.warning(f"Some tests failed:\n```\n{test_output}\n```")
+#         # Run test suite
+#         tests_ok, test_output = run_tests()
+#         if not tests_ok and test_output.strip():
+#             st.warning(f"Some tests failed:\n```\n{test_output}\n```")
 
-        st.session_state.tests_validated = True
-    except Exception as e:
-        st.warning(f"Test runner error: {str(e)}")
-        st.session_state.tests_validated = True
+#         st.session_state.tests_validated = True
+#     except Exception as e:
+#         st.warning(f"Test runner error: {str(e)}")
+#         st.session_state.tests_validated = True
 
 # define decorative elements
 preset_app()
@@ -195,7 +184,7 @@ with tabs[0]:
                 home,
                 home_color,
                 type_="offensive",
-                period=2
+                period=2,
             )
             home_defensive_third2 = plot_team_pitch_third(
                 st.session_state.event_data,
@@ -203,9 +192,9 @@ with tabs[0]:
                 home,
                 home_color,
                 type_="defensive",
-                period = 2
+                period=2,
             )
-            _1,_2 = st.columns([.5,.5])
+            _1, _2 = st.columns([0.5, 0.5])
             with _1:
                 st.pyplot(home_attacking_third1)
                 st.pyplot(home_defensive_third1)
@@ -266,7 +255,7 @@ with tabs[0]:
                 away,
                 away_color,
                 type_="offensive",
-                period=2
+                period=2,
             )
             away_defensive_third1 = plot_team_pitch_third(
                 st.session_state.event_data,
@@ -281,13 +270,13 @@ with tabs[0]:
                 away,
                 away_color,
                 type_="defensive",
-                period=2
+                period=2,
             )
-            _1,_2 = st.columns([.5,.5])
+            _1, _2 = st.columns([0.5, 0.5])
             with _1:
                 st.pyplot(away_attacking_third1)
                 st.pyplot(away_defensive_third1)
-            with _2: 
+            with _2:
                 st.pyplot(away_attacking_third2)
                 st.pyplot(away_defensive_third2)
             show_formation(
@@ -298,33 +287,33 @@ with tabs[0]:
             )
 
 
-# Tab 1: Pitch Control (Placeholder)
-with tabs[1]:
-    st.header("Pitch Control Analysis")
-    st.info("This feature is under development. Coming soon!")
-    st.markdown(
-        """
-    **Planned Features:**
-    - Team possession zones heatmap
-    - Dominant areas visualization
-    """
-    )
+# # Tab 1: Pitch Control (Placeholder)
+# with tabs[1]:
+#     st.header("Pitch Control Analysis")
+#     st.info("This feature is under development. Coming soon!")
+#     st.markdown(
+#         """
+#     **Planned Features:**
+#     - Team possession zones heatmap
+#     - Dominant areas visualization
+#     """
+#     )
 
-# Tab 2: Defensive Shape (Placeholder)
-with tabs[2]:
-    st.header("Defensive Shape Analysis")
-    st.info("This feature is under development. Coming soon!")
-    st.markdown(
-        """
-    **Planned Features:**
-    - Defensive line positioning
-    - Pressing intensity zones
-    """
-    )
+# # Tab 2: Defensive Shape (Placeholder)
+# with tabs[2]:
+#     st.header("Defensive Shape Analysis")
+#     st.info("This feature is under development. Coming soon!")
+#     st.markdown(
+#         """
+#     **Planned Features:**
+#     - Defensive line positioning
+#     - Pressing intensity zones
+#     """
+#     )
 
 
 # Tab 3: Player Profiling
-with tabs[3]:
+with tabs[1]:
     if match_available():
         selected_team = select_team(home, away)
         if selected_team:
@@ -466,7 +455,7 @@ with tabs[3]:
                     st.info("No offensive actions found for this player.")
             with plot_3:
                 defensive_events = player_events[
-                    player_events["end_type"].isin(DEFENSIVE_END_TYPES)
+                    (player_events["end_type"].isin(DEFENSIVE_END_TYPES) | (player_events["event_subtype"].isin(DEFENSIVE_END_TYPES)))
                 ]
                 if not defensive_events.empty:
                     plot_defensive_action(
@@ -480,7 +469,7 @@ with tabs[3]:
         st.warning("None Match have been seleected")
 
 # Tab 4: Player Performance (Comparison)
-with tabs[4]:
+with tabs[2]:
     title()
     if match_available():
         # players selection
