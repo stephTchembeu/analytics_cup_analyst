@@ -160,10 +160,6 @@ def show_formation(team:Team,match_data,event_data,team_color="#1f77b4"):
         pitch_length=match_data.metadata.coordinate_system.pitch_length,
         pitch_width=match_data.metadata.coordinate_system.pitch_width,
     )
-    players_name = df_players["name"]
-    players_position = df_players["position"]
-    for name, position in zip(players_name, players_position):
-        st.write(name, "-", position)
 
 
 def plot_momentum_chart_plotly(
