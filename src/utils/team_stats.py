@@ -489,6 +489,10 @@ POSITION_COORDS_H = {
 # Hybrid roles
 "RWB-CM": (58, 22),
 "LWB-CM": (58, 58),
+    
+# Wide Midfielders 
+"RM": (60, 20),
+"LM": (60, 60),
 
 # =================================================
 # Attacking Midfielders (IN FRONT of middle line)
